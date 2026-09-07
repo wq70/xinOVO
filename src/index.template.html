@@ -77,32 +77,36 @@
 </head>
 
 <body>
-    <!-- @include html/shell/open.html -->
-    <!-- @include html/screens/chat-core.html -->
-    <!-- @include html/screens/reminders-avatars-stickers.html -->
-    <!-- @include html/screens/worldbook.html -->
-    <!-- @include html/screens/api-settings/main-api.html -->
-    <!-- @include html/screens/api-settings/secondary-apis.html -->
-    <!-- @include html/screens/api-settings/specialized-apis.html -->
-    <!-- @include html/screens/api-settings/image-apis.html -->
-    <!-- @include html/screens/api-settings/tts.html -->
-    <!-- @include html/screens/general-settings.html -->
-    <!-- @include html/screens/chat-dialogs.html -->
-    <!-- @include html/screens/chat-settings/basics.html -->
-    <!-- @include html/screens/chat-settings/features.html -->
-    <!-- @include html/screens/chat-settings/extensions.html -->
-    <!-- @include html/screens/chat-settings/avatar-system.html -->
-    <!-- @include html/screens/chat-settings/prompts-media-node.html -->
-    <!-- @include html/screens/archive-theater.html -->
-    <!-- @include html/screens/group-settings.html -->
-    <!-- @include html/screens/memory-favorites.html -->
-    <!-- @include html/screens/forum-social.html -->
-    <!-- @include html/screens/magic-storage-peek.html -->
-    <!-- @include html/screens/video-call.html -->
-    <!-- @include html/screens/lifestyle.html -->
-    <!-- @include html/screens/node-system.html -->
-    <!-- @include html/shell/close.html -->
-    <!-- @include html/modals/global-modals.html -->
+    <!-- @include html/shell/root.html -->
+
+    <!-- 页面片段按顺序同步载入并装配；使用普通脚本以兼容 file:// 双击打开。 -->
+    <script data-ovo-html-loader src="js/generated/html/00-init.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/01-chat-core.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/02-reminders-avatars-stickers.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/03-worldbook.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/04-api-main.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/05-api-secondary.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/06-api-specialized.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/07-api-images.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/08-api-tts.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/09-general-settings.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/10-chat-dialogs.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/11-chat-settings-basics.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/12-chat-settings-features.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/13-chat-settings-extensions.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/14-chat-settings-avatar.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/15-chat-settings-prompts-media-node.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/16-archive-theater.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/17-group-settings.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/18-memory-favorites.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/19-forum-social.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/20-magic-storage-peek.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/21-video-call.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/22-lifestyle.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/23-node-system.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/24-global-modals.js"></script>
+    <script data-ovo-html-loader src="js/generated/html/99-mount.js"></script>
+
     <!-- @include html/scripts.html -->
 </body>
 

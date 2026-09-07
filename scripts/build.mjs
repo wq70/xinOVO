@@ -1,5 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+    bodyHtmlChunks,
+    loaderInitScript,
+    loaderMountScript,
+    phoneHtmlChunks,
+    renderChunkScript,
+} from './html-chunks.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 
@@ -19,6 +26,27 @@ const html = template.replace(
     (_, includePath) => read(path.join('src', includePath)),
 );
 writeIfChanged('index.html', html);
+
+const generatedHtmlDirectory = path.join(root, 'js/generated/html');
+fs.mkdirSync(generatedHtmlDirectory, { recursive: true });
+const generatedHtmlFiles = new Set(['00-init.js', '99-mount.js']);
+writeIfChanged('js/generated/html/00-init.js', loaderInitScript);
+for (const [name, sources] of phoneHtmlChunks) {
+    const output = `${name}.js`;
+    generatedHtmlFiles.add(output);
+    writeIfChanged(`js/generated/html/${output}`, renderChunkScript('phone', sources.map(source => read(path.join('src', source))).join('')));
+}
+for (const [name, sources] of bodyHtmlChunks) {
+    const output = `${name}.js`;
+    generatedHtmlFiles.add(output);
+    writeIfChanged(`js/generated/html/${output}`, renderChunkScript('body', sources.map(source => read(path.join('src', source))).join('')));
+}
+writeIfChanged('js/generated/html/99-mount.js', loaderMountScript);
+for (const file of fs.readdirSync(generatedHtmlDirectory)) {
+    if (file.endsWith('.js') && !generatedHtmlFiles.has(file)) {
+        fs.unlinkSync(path.join(generatedHtmlDirectory, file));
+    }
+}
 
 const memoryParts = [
     'src/js/modules/memory-table/core.jsfrag',
@@ -51,4 +79,4 @@ for (const [output, parts] of generatedBundles) {
     writeIfChanged(output, parts.map(read).join(''));
 }
 
-console.log('Built index.html and legacy runtime bundles.');
+console.log('Built compact index.html, local HTML loaders, and legacy runtime bundles.');

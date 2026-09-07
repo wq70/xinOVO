@@ -1,6 +1,6 @@
 # xinOVO
 
-这是 OVO 的静态网页项目。仓库根目录中的 `index.html` 是可直接使用的构建产物，下载仓库后可以直接双击打开，不需要启动开发服务器。
+这是 OVO 的静态网页项目。仓库根目录中的 `index.html` 是小型装配入口，下载仓库后可以直接双击打开，不需要启动开发服务器。
 
 ## 修改页面
 
@@ -12,7 +12,7 @@ npm run build
 npm run check
 ```
 
-`npm run build` 会按模板顺序拼装页面，并重新生成需要保持私有作用域的兼容脚本。`npm run check` 会检查 HTML 结构、重复 ID、本地资源、已移除的登录验证标记和全部 JavaScript 语法。
+`npm run build` 会把 HTML 片段转换为 `js/generated/html/` 下的本地经典脚本，并生成紧凑的根目录入口；还会重新生成需要保持私有作用域的兼容脚本。页面片段会在业务初始化前同步装配，因此不依赖 HTTP 服务或运行时 `fetch()`。`npm run check` 会检查装配后的完整 HTML 结构、重复 ID、本地资源、已移除的登录验证标记和全部 JavaScript 语法。
 
 ## JavaScript 结构
 
