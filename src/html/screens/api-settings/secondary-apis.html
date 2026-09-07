@@ -1,0 +1,335 @@
+                    <!-- 副API 1: 总结专用 -->
+                    <div class="kkt-group collapsible-section" style="margin-top: 30px; padding-top: 0; border-top: 2px solid #eee;">
+                        <div class="collapsible-header" style="padding: 15px 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" onclick="this.parentElement.classList.toggle('open')">
+                            <div>
+                                <h3 style="margin: 0; font-size: 16px; color: var(--primary-color);">总结专用 API（可选）</h3>
+                                <p style="font-size: 12px; color: #999; margin: 5px 0 0;">留空则使用主API，填写后总结功能优先使用此配置</p>
+                            </div>
+                            <span class="collapsible-arrow">▼</span>
+                        </div>
+                        
+                        <div class="collapsible-content">
+                            <div class="kkt-item">
+                            <div class="kkt-item-label">服务商</div>
+                            <div class="kkt-item-control">
+                                <select id="summary-api-provider"
+                                    style="border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                    <option value="newapi">NewAPI (自定义)</option>
+                                    <option value="deepseek">DeepSeek</option>
+                                    <option value="claude">Claude</option>
+                                    <option value="gemini">Gemini</option>
+                                </select>
+                                <span class="kkt-arrow">›</span>
+                            </div>
+                        </div>
+                        
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">API 地址</div>
+                            <div class="kkt-item-control">
+                                <input type="text" id="summary-api-url" autocomplete="off"
+                                    placeholder="https://..."
+                                    style="text-align:right; border:none; background:transparent; width: 100%;">
+                            </div>
+                        </div>
+                        
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">密钥 (Key)</div>
+                            <div class="kkt-item-control">
+                                <input type="password" id="summary-api-key" autocomplete="new-password"
+                                    placeholder="sk-..."
+                                    style="text-align:right; border:none; background:transparent; width: 100%;">
+                            </div>
+                        </div>
+                        
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">模型列表</div>
+                            <div class="kkt-item-control">
+                                <button type="button" class="btn btn-small btn-secondary" id="summary-fetch-models-btn"
+                                    style="margin:0; padding: 4px 8px;">
+                                    <span class="btn-text">拉取</span>
+                                    <div class="spinner"></div>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">选择模型</div>
+                            <div class="kkt-item-control">
+                                <select id="summary-api-model"
+                                    style="border:none; background:transparent; text-align:right; direction: rtl; max-width: 180px; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                    <option value="">请先拉取</option>
+                                </select>
+                                <span class="kkt-arrow">›</span>
+                            </div>
+                        </div>
+                        
+                        <button type="button" class="btn btn-primary" id="summary-api-save-btn"
+                            style="margin-top: 15px; width: 100%;">
+                            <span class="btn-text">保存总结API设置</span>
+                            <div class="spinner"></div>
+                        </button>
+                        
+                        <!-- 总结API预设管理 -->
+                        <div class="api-presets-embedded" style="margin-top:20px;">
+                            <div style="margin-bottom: 10px;">
+                                <h3 style="margin: 0; font-size: 14px; color: var(--primary-color);">总结API预设管理</h3>
+                                <p style="font-size: 11px; color: #999; margin: 3px 0 0;">管理总结API配置预设</p>
+                            </div>
+                            <div id="summary-api-presets-control"
+                                style="padding:12px; border-radius:8px; background: #f5f5f5; border: 1px solid #eee;">
+                                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                    <label style="min-width:40px; color:#666; font-size: 14px;">预设</label>
+                                    <select id="summary-api-preset-select"
+                                        style="flex:1; padding:6px; border-radius:6px; border:1px solid #ddd;">
+                                        <option value="">— 选择 —</option>
+                                    </select>
+                                    <button id="summary-api-apply-preset" class="btn btn-primary btn-small"
+                                        style="padding: 6px 12px;">应用</button>
+                                </div>
+                                <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
+                                    <button id="summary-api-save-preset" class="btn btn-small" style="flex: 1;">另存为</button>
+                                    <button id="summary-api-manage-presets" class="btn btn-small" style="flex: 1;">管理</button>
+                                    <button id="summary-api-import-presets" class="btn btn-small" style="flex: 1;">导入</button>
+                                    <button id="summary-api-export-presets" class="btn btn-small" style="flex: 1;">导出</button>
+                                </div>
+                            </div>
+                            <div id="summary-api-presets-modal"
+                                style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:9999;align-items:center;justify-content:center;">
+                                <div
+                                    style="width:640px;max-width:94%;background:var(--panel-bg,#fff);padding:16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.12);">
+                                    <h3 style="margin:0 0 12px 0;">总结API预设管理</h3>
+                                    <div id="summary-api-presets-list"
+                                        style="max-height:360px;overflow:auto;border:1px solid #f0f0f0;padding:8px;border-radius:6px;">
+                                    </div>
+                                    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+                                        <button id="summary-api-close-modal" class="btn btn-primary">关闭</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        </div>
+                    </div>
+
+                    <!-- 副API 2: 向量记忆 Embedding -->
+                    <div class="kkt-group collapsible-section" style="margin-top: 30px; padding-top: 0; border-top: 2px solid #eee;">
+                        <div class="collapsible-header" style="padding: 15px 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" onclick="this.parentElement.classList.toggle('open')">
+                            <div>
+                                <h3 style="margin: 0; font-size: 16px; color: var(--primary-color);">向量记忆 API（可选）</h3>
+                                <p style="font-size: 12px; color: #999; margin: 5px 0 0;">用于向量化记忆和语义检索。留空则回退到总结 API 或主 API。</p>
+                            </div>
+                            <span class="collapsible-arrow">▼</span>
+                        </div>
+                        
+                        <div class="collapsible-content">
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">服务商</div>
+                                <div class="kkt-item-control">
+                                    <select id="vector-api-provider"
+                                        style="border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                        <option value="newapi">NewAPI (自定义)</option>
+                                        <option value="deepseek">DeepSeek</option>
+                                        <option value="claude">Claude</option>
+                                        <option value="gemini">Gemini</option>
+                                    </select>
+                                    <span class="kkt-arrow">›</span>
+                                </div>
+                            </div>
+                            
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">API 地址</div>
+                                <div class="kkt-item-control">
+                                    <input type="text" id="vector-api-url" autocomplete="off"
+                                        placeholder="https://..."
+                                        style="text-align:right; border:none; background:transparent; width: 100%;">
+                                </div>
+                            </div>
+                            
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">密钥 (Key)</div>
+                                <div class="kkt-item-control">
+                                    <input type="password" id="vector-api-key" autocomplete="new-password"
+                                        placeholder="sk-..."
+                                        style="text-align:right; border:none; background:transparent; width: 100%;">
+                                </div>
+                            </div>
+                            
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">模型列表</div>
+                                <div class="kkt-item-control">
+                                    <button type="button" class="btn btn-small btn-secondary" id="vector-fetch-models-btn"
+                                        style="margin:0; padding: 4px 8px;">
+                                        <span class="btn-text">拉取</span>
+                                        <div class="spinner"></div>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">选择模型</div>
+                                <div class="kkt-item-control">
+                                    <select id="vector-api-model"
+                                        style="border:none; background:transparent; text-align:right; direction: rtl; max-width: 180px; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                        <option value="">请先拉取</option>
+                                    </select>
+                                    <span class="kkt-arrow">›</span>
+                                </div>
+                            </div>
+                            
+                            <button type="button" class="btn btn-primary" id="vector-api-save-btn"
+                                style="margin-top: 15px; width: 100%;">
+                                <span class="btn-text">保存向量记忆API设置</span>
+                                <div class="spinner"></div>
+                            </button>
+                            
+                            <div class="api-presets-embedded" style="margin-top:20px;">
+                                <div style="margin-bottom: 10px;">
+                                    <h3 style="margin: 0; font-size: 14px; color: var(--primary-color);">向量记忆API预设管理</h3>
+                                    <p style="font-size: 11px; color: #999; margin: 3px 0 0;">管理 Embedding API 配置预设</p>
+                                </div>
+                                <div id="vector-api-presets-control"
+                                    style="padding:12px; border-radius:8px; background: #f5f5f5; border: 1px solid #eee;">
+                                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                        <label style="min-width:40px; color:#666; font-size: 14px;">预设</label>
+                                        <select id="vector-api-preset-select"
+                                            style="flex:1; padding:6px; border-radius:6px; border:1px solid #ddd;">
+                                            <option value="">— 选择 —</option>
+                                        </select>
+                                        <button id="vector-api-apply-preset" class="btn btn-primary btn-small"
+                                            style="padding: 6px 12px;">应用</button>
+                                    </div>
+                                    <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
+                                        <button id="vector-api-save-preset" class="btn btn-small" style="flex: 1;">另存为</button>
+                                        <button id="vector-api-manage-presets" class="btn btn-small" style="flex: 1;">管理</button>
+                                        <button id="vector-api-import-presets" class="btn btn-small" style="flex: 1;">导入</button>
+                                        <button id="vector-api-export-presets" class="btn btn-small" style="flex: 1;">导出</button>
+                                    </div>
+                                </div>
+                                <div id="vector-api-presets-modal"
+                                    style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:9999;align-items:center;justify-content:center;">
+                                    <div
+                                        style="width:640px;max-width:94%;background:var(--panel-bg,#fff);padding:16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.12);">
+                                        <h3 style="margin:0 0 12px 0;">向量记忆API预设管理</h3>
+                                        <div id="vector-api-presets-list"
+                                            style="max-height:360px;overflow:auto;border:1px solid #f0f0f0;padding:8px;border-radius:6px;">
+                                        </div>
+                                        <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+                                            <button id="vector-api-close-modal" class="btn btn-primary">关闭</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 副API 3: 后台活动专用 -->
+                    <div class="kkt-group collapsible-section" style="margin-top: 30px; padding-top: 0; border-top: 2px solid #eee;">
+                        <div class="collapsible-header" style="padding: 15px 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" onclick="this.parentElement.classList.toggle('open')">
+                            <div>
+                                <h3 style="margin: 0; font-size: 16px; color: var(--primary-color);">后台活动专用 API（可选）</h3>
+                                <p style="font-size: 12px; color: #999; margin: 5px 0 0;">留空则使用主API，填写后后台活动优先使用此配置</p>
+                            </div>
+                            <span class="collapsible-arrow">▼</span>
+                        </div>
+                        
+                        <div class="collapsible-content">
+                            <div class="kkt-item">
+                            <div class="kkt-item-label">服务商</div>
+                            <div class="kkt-item-control">
+                                <select id="background-api-provider"
+                                    style="border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                    <option value="newapi">NewAPI (自定义)</option>
+                                    <option value="deepseek">DeepSeek</option>
+                                    <option value="claude">Claude</option>
+                                    <option value="gemini">Gemini</option>
+                                </select>
+                                <span class="kkt-arrow">›</span>
+                            </div>
+                        </div>
+                        
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">API 地址</div>
+                            <div class="kkt-item-control">
+                                <input type="text" id="background-api-url" autocomplete="off"
+                                    placeholder="https://..."
+                                    style="text-align:right; border:none; background:transparent; width: 100%;">
+                            </div>
+                        </div>
+                        
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">密钥 (Key)</div>
+                            <div class="kkt-item-control">
+                                <input type="password" id="background-api-key" autocomplete="new-password"
+                                    placeholder="sk-..."
+                                    style="text-align:right; border:none; background:transparent; width: 100%;">
+                            </div>
+                        </div>
+                        
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">模型列表</div>
+                            <div class="kkt-item-control">
+                                <button type="button" class="btn btn-small btn-secondary" id="background-fetch-models-btn"
+                                    style="margin:0; padding: 4px 8px;">
+                                    <span class="btn-text">拉取</span>
+                                    <div class="spinner"></div>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">选择模型</div>
+                            <div class="kkt-item-control">
+                                <select id="background-api-model"
+                                    style="border:none; background:transparent; text-align:right; direction: rtl; max-width: 180px; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                    <option value="">请先拉取</option>
+                                </select>
+                                <span class="kkt-arrow">›</span>
+                            </div>
+                        </div>
+                        
+                        <button type="button" class="btn btn-primary" id="background-api-save-btn"
+                            style="margin-top: 15px; width: 100%;">
+                            <span class="btn-text">保存后台活动API设置</span>
+                            <div class="spinner"></div>
+                        </button>
+                        
+                        <!-- 后台活动API预设管理 -->
+                        <div class="api-presets-embedded" style="margin-top:20px;">
+                            <div style="margin-bottom: 10px;">
+                                <h3 style="margin: 0; font-size: 14px; color: var(--primary-color);">后台活动API预设管理</h3>
+                                <p style="font-size: 11px; color: #999; margin: 3px 0 0;">管理后台活动API配置预设</p>
+                            </div>
+                            <div id="background-api-presets-control"
+                                style="padding:12px; border-radius:8px; background: #f5f5f5; border: 1px solid #eee;">
+                                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                    <label style="min-width:40px; color:#666; font-size: 14px;">预设</label>
+                                    <select id="background-api-preset-select"
+                                        style="flex:1; padding:6px; border-radius:6px; border:1px solid #ddd;">
+                                        <option value="">— 选择 —</option>
+                                    </select>
+                                    <button id="background-api-apply-preset" class="btn btn-primary btn-small"
+                                        style="padding: 6px 12px;">应用</button>
+                                </div>
+                                <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
+                                    <button id="background-api-save-preset" class="btn btn-small" style="flex: 1;">另存为</button>
+                                    <button id="background-api-manage-presets" class="btn btn-small" style="flex: 1;">管理</button>
+                                    <button id="background-api-import-presets" class="btn btn-small" style="flex: 1;">导入</button>
+                                    <button id="background-api-export-presets" class="btn btn-small" style="flex: 1;">导出</button>
+                                </div>
+                            </div>
+                            <div id="background-api-presets-modal"
+                                style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:9999;align-items:center;justify-content:center;">
+                                <div
+                                    style="width:640px;max-width:94%;background:var(--panel-bg,#fff);padding:16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.12);">
+                                    <h3 style="margin:0 0 12px 0;">后台活动API预设管理</h3>
+                                    <div id="background-api-presets-list"
+                                        style="max-height:360px;overflow:auto;border:1px solid #f0f0f0;padding:8px;border-radius:6px;">
+                                    </div>
+                                    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+                                        <button id="background-api-close-modal" class="btn btn-primary">关闭</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        </div>
+                    </div>
+

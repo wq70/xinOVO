@@ -1,0 +1,175 @@
+        <div id="api-settings-screen" class="screen">
+            <header class="app-header">
+                <button class="back-btn" data-target="home-screen">‹</button>
+                <div class="title-container">
+                    <h1 class="title">API 设置</h1>
+                </div>
+                <div class="placeholder"></div>
+            </header>
+            <div id="api-settings-search-bar" style="padding: 10px 15px; background: #fff; z-index: 10; border-bottom: 1px solid #f0f0f0;">
+                <div class="search-input-wrapper" style="display: flex; align-items: center; background: #f5f5f5; border-radius: 16px; padding: 0 12px;">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="api-settings-search-input" placeholder="搜索 API 设置项..." style="border: none; background: transparent; padding: 8px; width: 100%; outline: none; font-size: 14px;">
+                </div>
+            </div>
+            <main class="content">
+                <div class="kkt-settings-container">
+                    <form id="api-form">
+                        <!-- 基础配置 -->
+                        <div class="kkt-group">
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">服务商</div>
+                                <div class="kkt-item-control">
+                                    <select id="api-provider" name="provider"
+                                        style="border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                        <option value="newapi">NewAPI (自定义)</option>
+                                        <option value="deepseek">DeepSeek</option>
+                                        <option value="claude">Claude</option>
+                                        <option value="gemini">Gemini</option>
+                                    </select>
+                                    <span class="kkt-arrow">›</span>
+                                </div>
+                            </div>
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">API 地址</div>
+                                <div class="kkt-item-control">
+                                    <input type="text" id="api-url" name="url" autocomplete="off"
+                                        placeholder="https://..."
+                                        style="text-align:right; border:none; background:transparent; width: 100%;">
+                                </div>
+                            </div>
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">密钥 (Key)</div>
+                                <div class="kkt-item-control">
+                                    <input type="password" id="api-key" name="key" autocomplete="new-password"
+                                        placeholder="sk-..."
+                                        style="text-align:right; border:none; background:transparent; width: 100%;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 模型配置 -->
+                        <div class="kkt-group" style="margin-top: 15px;">
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">模型列表</div>
+                                <div class="kkt-item-control">
+                                    <button type="button" class="btn btn-small btn-secondary" id="fetch-models-btn"
+                                        style="margin:0; padding: 4px 8px;">
+                                        <span class="btn-text">拉取</span>
+                                        <div class="spinner"></div>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">选择模型</div>
+                                <div class="kkt-item-control">
+                                    <select id="api-model" name="model"
+                                        style="border:none; background:transparent; text-align:right; direction: rtl; max-width: 180px; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                        <option value="">请先拉取</option>
+                                    </select>
+                                    <span class="kkt-arrow">›</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 高级设置 -->
+                        <div class="kkt-group" style="margin-top: 15px;">
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">线上角色限制<p style="font-size:12px;color:#999;margin:4px 0 0;">开启后角色将严格保持线上身份，禁止提及线下见面</p></div>
+                                <div class="kkt-item-control">
+                                    <label class="kkt-switch">
+                                        <input type="checkbox" id="online-role-switch" checked>
+                                        <span class="kkt-slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">时间感知加强</div>
+                                <div class="kkt-item-control">
+                                    <label class="kkt-switch">
+                                        <input type="checkbox" id="time-perception-switch">
+                                        <span class="kkt-slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">流式输出</div>
+                                <div class="kkt-item-control">
+                                    <label class="kkt-switch">
+                                        <input type="checkbox" id="stream-switch">
+                                        <span class="kkt-slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">快速回复<p style="font-size:12px;color:#999;margin:4px 0 0;">开启后跳过思维链思考，直接输出回复</p></div>
+                                <div class="kkt-item-control">
+                                    <label class="kkt-switch">
+                                        <input type="checkbox" id="quick-reply-switch">
+                                        <span class="kkt-slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="kkt-item"
+                                style="flex-direction: column; align-items: stretch; padding-bottom: 15px;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                                    <div class="kkt-item-label">回复随机性 (Temperature)</div>
+                                    <span id="temperature-value"
+                                        style="color: var(--primary-color); font-weight: bold;">1.0</span>
+                                </div>
+                                <input type="range" id="temperature-slider" min="0" max="2" step="0.1" value="1.0"
+                                    style="width: 100%; accent-color: var(--primary-color);">
+                                <p style="font-size: 12px; color: #999; margin-top: 5px; margin-bottom: 0;">
+                                    数值越大越随机，数值越小越严谨。</p>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" id="save-btn"
+                            style="margin-top: 20px; width: 100%;">
+                            <span class="btn-text">保存设置</span>
+                            <div class="spinner"></div>
+                        </button>
+                        
+                        <!-- API 预设管理 -->
+                        <div class="api-presets-embedded" style="margin-top:20px;">
+                            <div style="margin-bottom: 10px;">
+                                <h3 style="margin: 0; font-size: 14px; color: var(--primary-color);">API 预设管理</h3>
+                                <p style="font-size: 11px; color: #999; margin: 3px 0 0;">管理聊天API配置预设</p>
+                            </div>
+                            <div id="api-presets-control"
+                                style="padding:12px; border-radius:8px; background: #f5f5f5; border: 1px solid #eee;">
+                                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                    <label style="min-width:40px; color:#666; font-size: 14px;">预设</label>
+                                    <select id="api-preset-select"
+                                        style="flex:1; padding:6px; border-radius:6px; border:1px solid #ddd;">
+                                        <option value="">— 选择 —</option>
+                                    </select>
+                                    <button id="api-apply-preset" class="btn btn-primary btn-small"
+                                        style="padding: 6px 12px;">应用</button>
+                                </div>
+                                <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
+                                    <button id="api-save-preset" class="btn btn-small" style="flex: 1;">另存为</button>
+                                    <button id="api-manage-presets" class="btn btn-small" style="flex: 1;">管理</button>
+                                    <button id="api-import-presets" class="btn btn-small" style="flex: 1;">导入</button>
+                                    <button id="api-export-presets" class="btn btn-small" style="flex: 1;">导出</button>
+                                </div>
+                            </div>
+                            <div id="api-presets-modal"
+                                style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:9999;align-items:center;justify-content:center;">
+                                <div
+                                    style="width:640px;max-width:94%;background:var(--panel-bg,#fff);padding:16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.12);">
+                                    <h3 style="margin:0 0 12px 0;">API 预设管理</h3>
+                                    <div id="api-presets-list"
+                                        style="max-height:360px;overflow:auto;border:1px solid #f0f0f0;padding:8px;border-radius:6px;">
+                                    </div>
+                                    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+                                        <button id="api-close-modal" class="btn btn-primary">关闭</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+

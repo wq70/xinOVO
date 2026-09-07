@@ -10356,39 +10356,80 @@
 -->
 
     <!-- [1. 基础层] -->
-    <script src="js/utils.js"></script> <!-- 工具函数：图片压缩、Toast提示、随机数等 -->
-    <script src="js/db.js"></script> <!-- 数据层：Dexie数据库配置、全局变量定义、数据存取 -->
+    <script src="js/core/ui-and-content-utils.js"></script>
+    <script src="js/core/api-and-image-utils.js"></script> <!-- 工具函数：图片压缩、Toast提示、随机数等 -->
+    <script src="js/data/defaults-and-state.js"></script>
+    <script src="js/data/indexed-db.js"></script> <!-- 数据层：Dexie数据库配置、全局变量定义、数据存取 -->
 
     <!-- [2. 核心交互层] -->
     <script src="js/ui.js"></script> <!-- UI交互：界面切换、主屏幕逻辑、右键菜单 -->
     <!-- Chat Modules -->
     <script src="js/modules/chat_list.js"></script>
     <script src="js/modules/character_import.js"></script>
-    <script src="js/modules/chat_render.js"></script>
-    <script src="js/modules/chat_ai.js"></script>
+    <script src="js/modules/chat-render/message-list.js"></script>
+    <script src="js/modules/chat-render/message-bubble.js"></script>
+    <script src="js/modules/chat-render/message-actions.js"></script>
+    <script src="js/modules/chat-render/image-generation.js"></script>
+    <script src="js/modules/chat-ai/context-and-image.js"></script>
+    <script src="js/modules/chat-ai/request-and-stream.js"></script>
+    <script src="js/modules/chat-ai/response-and-control.js"></script>
+    <script src="js/modules/chat-ai/prompt-helpers.js"></script>
+    <script src="js/modules/chat-ai/private-prompt.js"></script>
+    <script src="js/modules/chat-ai/token-stats.js"></script>
+    <script src="js/modules/chat-ai/call-reply.js"></script>
     <script src="js/modules/chat_features.js"></script>
     <script src="js/modules/avatar_recognition.js"></script>
     <script src="js/modules/chat_ops.js"></script>
     <script src="js/chat.js"></script> <!-- 聊天核心入口 -->
-    <script src="js/group_chat.js"></script> <!-- 群聊系统：群聊管理、设置、Prompt生成 -->
+    <script src="js/group-chat/runtime-and-private-chat.js"></script>
+    <script src="js/group-chat/settings-and-prompt.js"></script> <!-- 群聊系统：群聊管理、设置、Prompt生成 -->
     <script src="js/contacts.js"></script> <!-- 联系人：好友列表、名片 -->
-    <script src="js/settings.js"></script> <!-- 设置管理：API设置、外观自定义、预设管理 -->
+    <script src="js/settings/chat-settings.js"></script>
+    <script src="js/settings/magic-room-settings.js"></script>
+    <script src="js/settings/api-settings.js"></script>
+    <script src="js/settings/api-presets.js"></script>
+    <script src="js/settings/image-api-settings.js"></script>
+    <script src="js/settings/style-presets.js"></script>
+    <script src="js/settings/general-presets.js"></script>
+    <script src="js/settings/widget-presets.js"></script>
+    <script src="js/settings/customize-settings.js"></script>
+    <script src="js/settings/appearance-status-settings.js"></script>
+    <script src="js/settings/tts-settings.js"></script> <!-- 设置管理：API设置、外观自定义、预设管理 -->
     <script src="js/modules/block_system.js"></script> <!-- 拉黑与好友申请 -->
 
     <!-- [3. 独立功能模块 (Plugins)] -->
     <script src="js/modules/sticker.js"></script> <!-- 表情包管理系统 -->
     <script src="js/modules/pomodoro.js"></script> <!-- 番茄钟专注功能 -->
-    <script src="js/modules/forum.js"></script> <!-- 虚拟论坛功能 -->
-    <script src="js/modules/theater.js"></script> <!-- 小剧场功能 -->
-    <script src="js/modules/worldbook.js"></script> <!-- 世界书设定集 -->
-    <script src="js/modules/peek.js"></script> <!-- 偷看手机(相册/短信等) -->
-    <script src="js/modules/journal.js"></script> <!-- 回忆日记生成 -->
+    <script src="js/modules/forum/accounts-and-binding.js"></script>
+    <script src="js/modules/forum/post-detail.js"></script>
+    <script src="js/modules/forum/post-generation.js"></script>
+    <script src="js/modules/forum/settings-and-profile.js"></script>
+    <script src="js/modules/forum/direct-messages.js"></script>
+    <script src="js/modules/forum/ai-interactions.js"></script> <!-- 虚拟论坛功能 -->
+    <script src="js/modules/theater/data-and-render.js"></script>
+    <script src="js/modules/theater/editor-and-generation.js"></script>
+    <script src="js/modules/theater/share-and-edit.js"></script>
+    <script src="js/modules/theater/presets-and-html.js"></script>
+    <script src="js/modules/theater/character-theater.js"></script> <!-- 小剧场功能 -->
+    <script src="js/modules/worldbook/import-export.js"></script>
+    <script src="js/modules/worldbook/setup.js"></script>
+    <script src="js/modules/worldbook/render.js"></script> <!-- 世界书设定集 -->
+    <script src="js/modules/peek/setup-and-storage.js"></script>
+    <script src="js/modules/peek/social-apps.js"></script>
+    <script src="js/modules/peek/app-renderers.js"></script>
+    <script src="js/modules/peek/prompt-and-generation.js"></script> <!-- 偷看手机(相册/短信等) -->
+    <script src="js/modules/journal/setup.js"></script>
+    <script src="js/modules/journal/render-and-generate.js"></script>
+    <script src="js/modules/journal/automatic-journal.js"></script> <!-- 回忆日记生成 -->
     <script src="js/modules/memory_table.js"></script> <!-- 结构化记忆 -->
     <script src="js/modules/vector_memory.js"></script> <!-- 向量记忆 -->
     <script src="js/modules/reminder.js"></script> <!-- 提醒事项 -->
     <script src="js/modules/storage.js"></script> <!-- 存储空间分析图表 -->
     <script src="js/modules/widgets.js"></script> <!-- 桌面小组件设置 -->
-    <script src="js/modules/tutorial.js"></script> <!-- 教程、更新日志、GitHub备份 -->
+    <script src="js/modules/tutorial/guides.js"></script>
+    <script src="js/modules/tutorial/content-and-data-tools.js"></script>
+    <script src="js/modules/tutorial/backup-and-restore.js"></script>
+    <script src="js/modules/tutorial/github-backup.js"></script> <!-- 教程、更新日志、GitHub备份 -->
     <script src="js/modules/more_menu.js"></script> <!-- 更多菜单与状态栏管理 -->
     <script src="js/modules/regex_filter.js"></script> <!-- 正则过滤模块 -->
     <script src="js/modules/favorites.js"></script> <!-- 消息收藏 -->

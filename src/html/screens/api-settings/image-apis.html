@@ -1,0 +1,477 @@
+                    <!-- 天气服务 API -->
+                    <div class="kkt-group collapsible-section" style="margin-top: 30px; padding-top: 0; border-top: 2px solid #eee;">
+                        <div class="collapsible-header" style="padding: 15px 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" onclick="this.parentElement.classList.toggle('open')">
+                            <div>
+                                <h3 style="margin: 0; font-size: 16px; color: var(--primary-color);">全局天气服务 API（可选）</h3>
+                                <p style="font-size: 12px; color: #999; margin: 5px 0 0;">为角色提供天气感知能力的数据源</p>
+                            </div>
+                            <span class="collapsible-arrow">▼</span>
+                        </div>
+                        
+                        <div class="collapsible-content">
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">服务商</div>
+                                <div class="kkt-item-control">
+                                    <select id="weather-api-provider"
+                                        style="border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                        <option value="openmeteo">Open-Meteo (免费免Key推荐)</option>
+                                        <option value="wttrin">wttr.in (免费免Key)</option>
+                                        <option value="qweather">和风天气</option>
+                                        <option value="seniverse">心知天气</option>
+                                    </select>
+                                    <span class="kkt-arrow">›</span>
+                                </div>
+                            </div>
+                            
+                            <div class="kkt-item" id="weather-api-key-container" style="display:none;">
+                                <div class="kkt-item-label">密钥 (Key)</div>
+                                <div class="kkt-item-control">
+                                    <input type="password" id="weather-api-key" autocomplete="new-password"
+                                        placeholder="输入天气 API Key"
+                                        style="text-align:right; border:none; background:transparent; width: 100%;">
+                                </div>
+                            </div>
+                            
+                            <button type="button" class="btn btn-primary" id="weather-api-save-btn"
+                                style="margin-top: 15px; width: 100%;">
+                                <span class="btn-text">保存全局天气 API 设置</span>
+                                <div class="spinner"></div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 副API 6: 表情包识图专用 API -->
+                    <div class="kkt-group collapsible-section" style="margin-top: 30px; padding-top: 0; border-top: 2px solid #eee;">
+                        <div class="collapsible-header" style="padding: 15px 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" onclick="this.parentElement.classList.toggle('open')">
+                            <div>
+                                <h3 style="margin: 0; font-size: 16px; color: var(--primary-color);">表情包识图专用 API（可选）</h3>
+                                <p style="font-size: 12px; color: #999; margin: 5px 0 0;">留空则使用主API。用于在管理表情包时手动或批量识别表情包画面</p>
+                            </div>
+                            <span class="collapsible-arrow">▼</span>
+                        </div>
+                        
+                        <div class="collapsible-content">
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">服务商</div>
+                                <div class="kkt-item-control">
+                                    <select id="stickerRecognition-api-provider"
+                                        style="border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                        <option value="newapi">NewAPI (自定义)</option>
+                                        <option value="deepseek">DeepSeek</option>
+                                        <option value="claude">Claude</option>
+                                        <option value="gemini">Gemini</option>
+                                    </select>
+                                    <span class="kkt-arrow">›</span>
+                                </div>
+                            </div>
+                            
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">API 地址</div>
+                                <div class="kkt-item-control">
+                                    <input type="text" id="stickerRecognition-api-url" autocomplete="off"
+                                        placeholder="https://..."
+                                        style="text-align:right; border:none; background:transparent; width: 100%;">
+                                </div>
+                            </div>
+                            
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">密钥 (Key)</div>
+                                <div class="kkt-item-control">
+                                    <input type="password" id="stickerRecognition-api-key" autocomplete="new-password"
+                                        placeholder="sk-..."
+                                        style="text-align:right; border:none; background:transparent; width: 100%;">
+                                </div>
+                            </div>
+                            
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">模型列表</div>
+                                <div class="kkt-item-control">
+                                    <button type="button" class="btn btn-small btn-secondary" id="stickerRecognition-fetch-models-btn"
+                                        style="margin:0; padding: 4px 8px;">
+                                        <span class="btn-text">拉取</span>
+                                        <div class="spinner"></div>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">选择模型</div>
+                                <div class="kkt-item-control">
+                                    <select id="stickerRecognition-api-model"
+                                        style="border:none; background:transparent; text-align:right; direction: rtl; max-width: 180px; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                        <option value="">请先拉取</option>
+                                    </select>
+                                    <span class="kkt-arrow">›</span>
+                                </div>
+                            </div>
+                            
+                            <button type="button" class="btn btn-primary" id="stickerRecognition-api-save-btn"
+                                style="margin-top: 15px; width: 100%;">
+                                <span class="btn-text">保存表情包识图API设置</span>
+                                <div class="spinner"></div>
+                            </button>
+                            
+                            <div class="api-presets-embedded" style="margin-top:20px;">
+                                <div style="margin-bottom: 10px;">
+                                    <h3 style="margin: 0; font-size: 14px; color: var(--primary-color);">表情包识图API预设管理</h3>
+                                    <p style="font-size: 11px; color: #999; margin: 3px 0 0;">管理表情包识图API配置预设</p>
+                                </div>
+                                <div id="stickerRecognition-api-presets-control"
+                                    style="padding:12px; border-radius:8px; background: #f5f5f5; border: 1px solid #eee;">
+                                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                        <label style="min-width:40px; color:#666; font-size: 14px;">预设</label>
+                                        <select id="stickerRecognition-api-preset-select"
+                                            style="flex:1; padding:6px; border-radius:6px; border:1px solid #ddd;">
+                                            <option value="">— 选择 —</option>
+                                        </select>
+                                        <button id="stickerRecognition-api-apply-preset" class="btn btn-primary btn-small"
+                                            style="padding: 6px 12px;">应用</button>
+                                    </div>
+                                    <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
+                                        <button id="stickerRecognition-api-save-preset" class="btn btn-small" style="flex: 1;">另存为</button>
+                                        <button id="stickerRecognition-api-manage-presets" class="btn btn-small" style="flex: 1;">管理</button>
+                                        <button id="stickerRecognition-api-import-presets" class="btn btn-small" style="flex: 1;">导入</button>
+                                        <button id="stickerRecognition-api-export-presets" class="btn btn-small" style="flex: 1;">导出</button>
+                                    </div>
+                                </div>
+                                <div id="stickerRecognition-api-presets-modal"
+                                    style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:9999;align-items:center;justify-content:center;">
+                                    <div
+                                        style="width:640px;max-width:94%;background:var(--panel-bg,#fff);padding:16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.12);">
+                                        <h3 style="margin:0 0 12px 0;">表情包识图API预设管理</h3>
+                                        <div id="stickerRecognition-api-presets-list"
+                                            style="max-height:360px;overflow:auto;border:1px solid #f0f0f0;padding:8px;border-radius:6px;">
+                                        </div>
+                                        <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+                                            <button id="stickerRecognition-api-close-modal" class="btn btn-primary">关闭</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 全局生图超时设置 -->
+                    <div class="kkt-group" style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #eee;">
+                        <div class="kkt-item" style="flex-direction: column; align-items: stretch; padding-bottom: 15px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <div class="kkt-item-label">生图超时时间 (秒)</div>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <input type="number" id="global-image-gen-timeout" value="0" min="0" step="1" style="width:60px; text-align:right; border:none; background: rgba(0,0,0,0.05); border-radius: 4px; padding: 4px 8px;">
+                                    <span style="color:#666; font-size: 13px;">秒</span>
+                                </div>
+                            </div>
+                            <p style="font-size: 12px; color: #999; margin: 0;">设置生图的最长等待时间，超过该时间未生成将自动取消并报错。设为 0 表示不限制（一直等待）。</p>
+                        </div>
+                    </div>
+
+                    <!-- 全局自动压缩生图设置 -->
+                    <div class="kkt-group" style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #eee;">
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">自动压缩生图<p style="font-size:12px;color:#999;margin:4px 0 0;">开启后，AI生成的图片将自动压缩以节省存储空间</p></div>
+                            <div class="kkt-item-control">
+                                <label class="kkt-switch">
+                                    <input type="checkbox" id="global-auto-compress-image" checked>
+                                    <span class="kkt-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- GPT 生图 API 配置 -->
+                    <div class="kkt-group" style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #eee;">
+                        <div style="margin-bottom: 15px;">
+                            <h3 style="margin: 0; font-size: 16px; color: var(--primary-color);">GPT 生图 API</h3>
+                            <p style="font-size: 12px; color: #999; margin: 5px 0 0;">兼容 DALL-E 3 格式及各种第三方生图接口</p>
+                        </div>
+
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">启用 GPT 生图</div>
+                            <div class="kkt-item-control">
+                                <label class="kkt-switch">
+                                    <input type="checkbox" id="gpt-image-enabled">
+                                    <span class="kkt-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">API 地址 (Base URL)</div>
+                            <div class="kkt-item-control">
+                                <input type="text" id="gpt-image-url" autocomplete="off"
+                                    placeholder="https://api.example.com"
+                                    style="text-align:right; border:none; background:transparent; width: 100%;">
+                            </div>
+                        </div>
+
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">密钥 (Key)</div>
+                            <div class="kkt-item-control">
+                                <input type="password" id="gpt-image-key" autocomplete="new-password"
+                                    placeholder="sk-..."
+                                    style="text-align:right; border:none; background:transparent; width: 100%;">
+                            </div>
+                        </div>
+
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">模型列表</div>
+                            <div class="kkt-item-control">
+                                <button type="button" class="btn btn-small btn-secondary" id="gpt-image-fetch-models-btn"
+                                    style="margin:0; padding: 4px 8px;">
+                                    <span class="btn-text">拉取</span>
+                                    <div class="spinner"></div>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">选择模型</div>
+                            <div class="kkt-item-control" style="flex:1;">
+                                <select id="gpt-image-model-select"
+                                    style="width:100%; border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                    <option value="">请先拉取</option>
+                                </select>
+                                <span class="kkt-arrow">›</span>
+                            </div>
+                        </div>
+
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">模型名</div>
+                            <div class="kkt-item-control">
+                                <input type="text" id="gpt-image-model" autocomplete="off"
+                                    placeholder="如 dall-e-3 (可手动输入)"
+                                    style="text-align:right; border:none; background:transparent; width: 100%;">
+                            </div>
+                        </div>
+
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">图片尺寸</div>
+                            <div class="kkt-item-control">
+                                <select id="gpt-image-size"
+                                    style="border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                    <option value="512x512">512x512</option>
+                                    <option value="1024x1024">1024x1024 (1:1 方形)</option>
+                                    <option value="768x1024">768x1024 (3:4 竖版)</option>
+                                    <option value="1024x768">1024x768 (4:3 横版)</option>
+                                    <option value="576x1024">576x1024 (9:16 壁纸竖版)</option>
+                                    <option value="1024x576">1024x576 (16:9 壁纸横版)</option>
+                                    <option value="1024x1792">1024x1792 (长竖版)</option>
+                                    <option value="1792x1024">1792x1024 (长横版)</option>
+                                </select>
+                                <span class="kkt-arrow">›</span>
+                            </div>
+                        </div>
+
+                        <div class="kkt-item" style="flex-direction: column; align-items: stretch; padding-bottom: 15px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <div class="kkt-item-label">系统附加词（正向风格）</div>
+                            </div>
+                            <textarea id="gpt-image-system-prompt" rows="2" placeholder="会自动添加到提示词前，如：anime style, masterpiece"
+                                style="width: 100%; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; resize: vertical; font-size: 13px; box-sizing: border-box;"></textarea>
+                        </div>
+
+                        <div class="kkt-item" style="flex-direction: column; align-items: stretch; padding-bottom: 15px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <div class="kkt-item-label">负面提示词</div>
+                            </div>
+                            <textarea id="gpt-image-negative-prompt" rows="2" placeholder="如接口支持，则通过 --no 拼接在末尾，如：ugly, bad anatomy"
+                                style="width: 100%; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; resize: vertical; font-size: 13px; box-sizing: border-box;"></textarea>
+                        </div>
+
+                        <button type="button" class="btn btn-primary" id="gpt-image-save-btn"
+                            style="margin-top: 10px; width: 100%;">
+                            <span class="btn-text">保存 GPT 生图设置</span>
+                            <div class="spinner"></div>
+                        </button>
+
+                        <button type="button" class="btn btn-secondary" id="gpt-image-test-btn"
+                            style="margin-top: 8px; width: 100%;">
+                            <span class="btn-text">🎨 测试 GPT 生图</span>
+                            <div class="spinner"></div>
+                        </button>
+
+                        <!-- GPT 测试结果预览 -->
+                        <div id="gpt-image-test-preview" style="display:none; margin-top: 15px; text-align: center;">
+                            <img id="gpt-image-test-image" style="max-width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);" />
+                        </div>
+
+                        <!-- GPT 生图预设管理 -->
+                        <div class="api-presets-embedded" style="margin-top:20px;">
+                            <div style="margin-bottom: 10px;">
+                                <h3 style="margin: 0; font-size: 14px; color: var(--primary-color);">GPT 生图预设管理</h3>
+                                <p style="font-size: 11px; color: #999; margin: 3px 0 0;">管理 GPT 生图配置预设</p>
+                            </div>
+                            <div id="gpt-image-presets-control"
+                                style="padding:12px; border-radius:8px; background: #f5f5f5; border: 1px solid #eee;">
+                                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                    <label style="min-width:40px; color:#666; font-size: 14px;">预设</label>
+                                    <select id="gpt-image-preset-select"
+                                        style="flex:1; padding:6px; border-radius:6px; border:1px solid #ddd;">
+                                        <option value="">— 选择 —</option>
+                                    </select>
+                                    <button type="button" id="gpt-image-apply-preset" class="btn btn-primary btn-small"
+                                        style="padding: 6px 12px;">应用</button>
+                                </div>
+                                <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
+                                    <button type="button" id="gpt-image-save-preset" class="btn btn-small" style="flex: 1;">另存为</button>
+                                    <button type="button" id="gpt-image-manage-presets" class="btn btn-small" style="flex: 1;">管理</button>
+                                    <button type="button" id="gpt-image-import-presets" class="btn btn-small" style="flex: 1;">导入</button>
+                                    <button type="button" id="gpt-image-export-presets" class="btn btn-small" style="flex: 1;">导出</button>
+                                </div>
+                            </div>
+                            <div id="gpt-image-presets-modal"
+                                style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:9999;align-items:center;justify-content:center;">
+                                <div
+                                    style="width:640px;max-width:94%;background:var(--panel-bg,#fff);padding:16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.12);">
+                                    <h3 style="margin:0 0 12px 0;">GPT 生图预设管理</h3>
+                                    <div id="gpt-image-presets-list"
+                                        style="max-height:360px;overflow:auto;border:1px solid #f0f0f0;padding:8px;border-radius:6px;">
+                                    </div>
+                                    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+                                        <button type="button" id="gpt-image-close-modal" class="btn btn-primary">关闭</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- NovelAI 生图 API 配置 -->
+                    <div class="kkt-group" style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #eee;">
+                        <div style="margin-bottom: 15px;">
+                            <h3 style="margin: 0; font-size: 16px; color: var(--primary-color);">NovelAI 生图 API</h3>
+                            <p style="font-size: 12px; color: #999; margin: 5px 0 0;">配置 NovelAI 图像生成接口，用于 AI 生图功能</p>
+                        </div>
+
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">启用 NovelAI 生图</div>
+                            <div class="kkt-item-control">
+                                <label class="kkt-switch">
+                                    <input type="checkbox" id="novelai-enabled">
+                                    <span class="kkt-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">API Token</div>
+                            <div class="kkt-item-control">
+                                <input type="password" id="novelai-token" autocomplete="new-password"
+                                    placeholder="pst-..."
+                                    style="text-align:right; border:none; background:transparent; width: 100%;">
+                            </div>
+                        </div>
+
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">自定义 API 地址</div>
+                            <div class="kkt-item-control">
+                                <label class="kkt-switch">
+                                    <input type="checkbox" id="novelai-custom-url-enabled">
+                                    <span class="kkt-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="kkt-item" id="novelai-custom-url-container" style="display: none;">
+                            <div class="kkt-item-label">API 地址</div>
+                            <div class="kkt-item-control">
+                                <input type="text" id="novelai-custom-url" autocomplete="off"
+                                    placeholder="https://..."
+                                    style="text-align:right; border:none; background:transparent; width: 100%;">
+                            </div>
+                        </div>
+
+                        <div class="kkt-item" style="flex-direction: column; align-items: stretch; padding-bottom: 15px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                                <div class="kkt-item-label">采样步数 (Steps)</div>
+                                <span id="novelai-steps-value" style="color: var(--primary-color); font-weight: bold;">28</span>
+                            </div>
+                            <input type="range" id="novelai-steps" min="1" max="50" step="1" value="28"
+                                style="width: 100%; accent-color: var(--primary-color);">
+                        </div>
+
+                        <div class="kkt-item" style="flex-direction: column; align-items: stretch; padding-bottom: 15px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                                <div class="kkt-item-label">提示词相关性 (Scale)</div>
+                                <span id="novelai-scale-value" style="color: var(--primary-color); font-weight: bold;">5.0</span>
+                            </div>
+                            <input type="range" id="novelai-scale" min="1" max="20" step="0.5" value="5"
+                                style="width: 100%; accent-color: var(--primary-color);">
+                            <p style="font-size: 12px; color: #999; margin-top: 5px; margin-bottom: 0;">
+                                数值越大越贴合提示词，但过高可能导致画面失真</p>
+                        </div>
+
+                        <div class="kkt-item" style="flex-direction: column; align-items: stretch; padding-bottom: 15px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <div class="kkt-item-label">系统基础 Prompt</div>
+                            </div>
+                            <textarea id="novelai-system-prompt" rows="2" placeholder="输入通用风格/质量 tag，会自动添加到所有生图请求的开头"
+                                style="width: 100%; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; resize: vertical; font-size: 13px; box-sizing: border-box;"></textarea>
+                            <p style="font-size: 12px; color: #999; margin-top: 5px; margin-bottom: 0;">
+                                将自动添加到所有生成请求的开头，如：<code>masterpiece, best quality, amazing quality</code></p>
+                        </div>
+
+                        <div class="kkt-item" style="flex-direction: column; align-items: stretch; padding-bottom: 15px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <div class="kkt-item-label">默认负面提示词</div>
+                            </div>
+                            <textarea id="novelai-negative-prompt" rows="3" placeholder="lowres, bad anatomy, bad hands, missing fingers..."
+                                style="width: 100%; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; resize: vertical; font-size: 13px; box-sizing: border-box;">lowres, {bad}, error, fewer, extra, missing, worst quality, jpeg artifacts, bad quality, watermark, unfinished, displeasing, chromatic aberration, signature, extra digits, artistic error, username, scan, [abstract]</textarea>
+                        </div>
+
+                        <button type="button" class="btn btn-primary" id="novelai-save-btn"
+                            style="margin-top: 10px; width: 100%;">
+                            <span class="btn-text">保存 NovelAI 设置</span>
+                            <div class="spinner"></div>
+                        </button>
+
+                        <button type="button" class="btn btn-secondary" id="novelai-test-btn"
+                            style="margin-top: 8px; width: 100%;">
+                            <span class="btn-text">🎨 测试生图</span>
+                            <div class="spinner"></div>
+                        </button>
+
+                        <!-- NovelAI 测试结果预览 -->
+                        <div id="novelai-test-preview" style="display:none; margin-top: 15px; text-align: center;">
+                            <img id="novelai-test-image" style="max-width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);" />
+                        </div>
+
+                        <!-- NovelAI 生图预设管理 -->
+                        <div class="api-presets-embedded" style="margin-top:20px;">
+                            <div style="margin-bottom: 10px;">
+                                <h3 style="margin: 0; font-size: 14px; color: var(--primary-color);">NovelAI 生图预设管理</h3>
+                                <p style="font-size: 11px; color: #999; margin: 3px 0 0;">管理 NovelAI 接口及参数预设</p>
+                            </div>
+                            <div id="novelai-presets-control"
+                                style="padding:12px; border-radius:8px; background: #f5f5f5; border: 1px solid #eee;">
+                                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                    <label style="min-width:40px; color:#666; font-size: 14px;">预设</label>
+                                    <select id="novelai-preset-select"
+                                        style="flex:1; padding:6px; border-radius:6px; border:1px solid #ddd;">
+                                        <option value="">— 选择 —</option>
+                                    </select>
+                                    <button type="button" id="novelai-apply-preset" class="btn btn-primary btn-small"
+                                        style="padding: 6px 12px;">应用</button>
+                                </div>
+                                <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
+                                    <button type="button" id="novelai-save-preset" class="btn btn-small" style="flex: 1;">另存为</button>
+                                    <button type="button" id="novelai-manage-presets" class="btn btn-small" style="flex: 1;">管理</button>
+                                    <button type="button" id="novelai-import-presets" class="btn btn-small" style="flex: 1;">导入</button>
+                                    <button type="button" id="novelai-export-presets" class="btn btn-small" style="flex: 1;">导出</button>
+                                </div>
+                            </div>
+                            <div id="novelai-presets-modal"
+                                style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:9999;align-items:center;justify-content:center;">
+                                <div
+                                    style="width:640px;max-width:94%;background:var(--panel-bg,#fff);padding:16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.12);">
+                                    <h3 style="margin:0 0 12px 0;">NovelAI 生图预设管理</h3>
+                                    <div id="novelai-presets-list"
+                                        style="max-height:360px;overflow:auto;border:1px solid #f0f0f0;padding:8px;border-radius:6px;">
+                                    </div>
+                                    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+                                        <button type="button" id="novelai-close-modal" class="btn btn-primary">关闭</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+

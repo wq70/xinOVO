@@ -1,0 +1,790 @@
+async function getAiReply(chatId, chatType, isBackground = false, isSummary = false, isCharBlockedMonologue = false, isPhoneControlRevokeAttempt = false) {
+    if (isGenerating && !isBackground) return;
+
+    // 拉黑检查：被拉黑的角色不回复（角色拉黑用户后的「让TA说说」不在此列）
+    if (chatType === 'private' && !isCharBlockedMonologue) {
+        const char = db.characters.find(c => c.id === chatId);
+        if (char && char.isBlocked) return;
+    }
+
+    // 免打扰时段检查：后台消息在免打扰时段内直接跳过
+    if (isBackground && isInQuietHours(chatId)) return;
+
+    if (!isBackground) {
+        if (db.globalSendSound) {
+            playSound(db.globalSendSound);
+        } else {
+            AudioManager.unlock();
+        }
+    }
+
+    // === API选择逻辑：根据场景选择不同API ===
+    let apiConfig;
+    
+    if (isSummary && db.summaryApiSettings && db.summaryApiSettings.url && db.summaryApiSettings.key && db.summaryApiSettings.model) {
+        // 总结功能且已配置总结API：使用总结专用API
+        apiConfig = db.summaryApiSettings;
+    } else if (isBackground && db.backgroundApiSettings && db.backgroundApiSettings.url && db.backgroundApiSettings.key && db.backgroundApiSettings.model) {
+        // 后台活动且已配置后台API：使用后台活动专用API
+        apiConfig = db.backgroundApiSettings;
+    } else {
+        // 默认使用主API
+        apiConfig = db.apiSettings;
+    }
+    
+    let {url, key, model, provider} = apiConfig;
+    let streamEnabled = db.apiSettings.streamEnabled; // 流式输出始终使用主API的设置
+    
+    if (!url || !key || !model) {
+        if (!isBackground) {
+            showToast('请先在“api”应用中完成设置！');
+            switchScreen('api-settings-screen');
+        }
+        return;
+    }
+
+    // 确保 BLOCKED_API_DOMAINS 存在
+    const blockedDomains = (typeof BLOCKED_API_DOMAINS !== 'undefined') ? BLOCKED_API_DOMAINS : [];
+    if (blockedDomains.some(domain => url.includes(domain))) {
+        if (!isBackground) showToast('当前 API 站点已被屏蔽，无法发送消息！');
+        return;
+    }
+
+    if (url.endsWith('/')) {
+        url = url.slice(0, -1);
+    }
+
+    const chat = (chatType === 'private') ? db.characters.find(c => c.id === chatId) : db.groups.find(g => g.id === chatId);
+    if (!chat) return;
+
+    if (!isBackground) {
+        currentReplyAbortController = new AbortController();
+        isGenerating = true;
+        getReplyBtn.disabled = true;
+        regenerateBtn.disabled = true;
+        const typingName = chatType === 'private' ? chat.remarkName : chat.name;
+        typingIndicator.textContent = `“${typingName}”正在输入中...`;
+        typingIndicator.style.display = 'block';
+        messageArea.scrollTop = messageArea.scrollHeight;
+    }
+
+    try {
+        let requestBody;
+        let historySlice = chat.history.slice(-chat.maxMemory);
+        
+        // 节点系统：上下文截断与记忆隔离
+        if (chatType === 'private' && chat.activeNodeId && chat.nodes) {
+            const activeNode = chat.nodes.find(n => n.id === chat.activeNodeId);
+            if (activeNode) {
+                let startIndex = -1;
+                for (let i = chat.history.length - 1; i >= 0; i--) {
+                    const m = chat.history[i];
+                    if (m.isNodeBoundary && m.nodeAction === 'start' && m.nodeId === chat.activeNodeId) {
+                        startIndex = i;
+                        break;
+                    }
+                }
+                if (startIndex !== -1) {
+                    // 无论是否开启 readMemory，当前对话视口严格只保留节点内的消息
+                    const nodeMsgs = chat.history.slice(startIndex + 1);
+                    historySlice = nodeMsgs.slice(-chat.maxMemory);
+                    
+                    // 上下文截断 (保留摘要)
+                    if (activeNode.enableSummary) {
+                        const summaryFloor = db.nodeSummaryFloor || 10;
+                        const nodeMsgsInSlice = historySlice.filter(m => !m.isNodeBoundary);
+                        if (nodeMsgsInSlice.length > summaryFloor) {
+                            const msgsToSummarize = nodeMsgsInSlice.slice(0, nodeMsgsInSlice.length - summaryFloor);
+                            historySlice = historySlice.map(m => {
+                                if (msgsToSummarize.includes(m)) {
+                                    if (m.isNodeSummaryMsg) {
+                                        return { ...m, content: `[过往剧情摘要：${m.content}]`, parts: [{type: 'text', text: `[过往剧情摘要：${m.content}]`}] };
+                                    } else if (m.nodeSummary) {
+                                        // 替换为摘要消息
+                                        return { ...m, content: `[过往剧情摘要：${m.nodeSummary}]`, parts: [{type: 'text', text: `[过往剧情摘要：${m.nodeSummary}]`}] };
+                                    } else {
+                                        // 没有摘要的旧消息直接丢弃
+                                        return { ...m, isContextDisabled: true };
+                                    }
+                                }
+                                return m;
+                            });
+                            
+                            // 去重连续的相同摘要
+                            let lastSummary = null;
+                            historySlice = historySlice.filter(m => {
+                                if (m.content && typeof m.content === 'string' && m.content.startsWith('[过往剧情摘要：')) {
+                                    if (m.content === lastSummary) return false;
+                                    lastSummary = m.content;
+                                    return true;
+                                }
+                                lastSummary = null;
+                                return true;
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // 节点系统：过滤掉已收纳节点的消息
+        if (chatType === 'private' && chat.nodes) {
+            const archivedNodeIds = chat.nodes.filter(n => n.status === 'archived').map(n => n.id);
+            if (archivedNodeIds.length > 0) {
+                let currentArchivedNodeId = null;
+                historySlice = historySlice.filter(m => {
+                    if (m.isNodeBoundary) {
+                        if (m.nodeAction === 'start' && archivedNodeIds.includes(m.nodeId)) {
+                            currentArchivedNodeId = m.nodeId;
+                            return false;
+                        }
+                        if (m.nodeAction === 'end' && m.nodeId === currentArchivedNodeId) {
+                            currentArchivedNodeId = null;
+                            return false;
+                        }
+                    }
+                    if (currentArchivedNodeId) return false;
+                    return true;
+                });
+            }
+        }
+        
+        // 使用工具函数进行过滤（包含深度克隆、屏蔽过滤、双语修正、状态栏剔除）
+        historySlice = filterHistoryForAI(chat, historySlice);
+        // 【新增】过滤掉不应进入上下文的消息（如思考过程、被撤回的消息标记等）
+        historySlice = historySlice.filter(m => !m.isContextDisabled);
+        
+        // 【双重保险】再次过滤掉内容匹配 <thinking> 的消息，防止 isContextDisabled 属性丢失
+        historySlice = historySlice.filter(m => {
+            if (m.isThinking) return false;
+            if (m.content && typeof m.content === 'string' && m.content.trim().startsWith('<thinking>')) return false;
+            return true;
+        });
+
+        let weatherText = '';
+        if (chatType === 'private' && window.WeatherService) {
+            const charWeather = await window.WeatherService.getCharacterWeatherPrompt(chat);
+            const userWeather = await window.WeatherService.getUserWeatherPrompt(chat);
+            if (charWeather || userWeather) {
+                weatherText = `\n<environment>\n${charWeather ? charWeather + '\n' : ''}${userWeather ? userWeather + '\n' : ''}</environment>\n`;
+            }
+        }
+
+        let systemPrompt;
+        if (chatType === 'private') {
+            if (chat.memoryMode === 'vector' && typeof prepareVectorMemoryContext === 'function') {
+                try {
+                    await prepareVectorMemoryContext(chat);
+                } catch (error) {
+                    console.warn('[VectorMemory] failed to prepare prompt context:', error);
+                }
+            }
+            systemPrompt = generatePrivateSystemPrompt(chat, { isPhoneControlRevokeAttempt, weatherText });
+        } else {
+            if (typeof generateGroupSystemPrompt === 'function') {
+                systemPrompt = generateGroupSystemPrompt(chat);
+            } else {
+                systemPrompt = "Group chat system prompt not available.";
+            }
+        }
+
+        // 检查是否开启了后台自动识图
+        if (db.imageRecognitionEnabled) {
+            let descApiConfig = (db.imageRecognitionApiSettings && db.imageRecognitionApiSettings.url && db.imageRecognitionApiSettings.key && db.imageRecognitionApiSettings.model) ? db.imageRecognitionApiSettings : db.apiSettings;
+            
+            // 从后往前找，只看开启之后的轮数（只找最新的一条用户消息）
+            let lastUserMsg = null;
+            for (let i = historySlice.length - 1; i >= 0; i--) {
+                if (historySlice[i].role === 'user') {
+                    lastUserMsg = historySlice[i];
+                    break;
+                }
+            }
+
+            if (lastUserMsg && lastUserMsg.parts) {
+                const hasUnprocessedImage = lastUserMsg.parts.some(p => p.type === 'image' && !p.description);
+                // 只有当有未处理图片且本消息还未触发过识图时才执行
+                if (hasUnprocessedImage && !lastUserMsg.isImageRecognitionTriggered) {
+                    const originalMsg = chat.history.find(m => m.id === lastUserMsg.id) || lastUserMsg;
+                    // 打上标记，无论成功失败都只触发一次，避免死循环扣费
+                    originalMsg.isImageRecognitionTriggered = true;
+                    lastUserMsg.isImageRecognitionTriggered = true; 
+                    
+                    if (typeof saveCurrentChat === 'function') await saveCurrentChat(); // 先保存一下标记
+                    
+                    // 同步调用识图，等待结果后再继续，以便本轮主模型能看到图片描述
+                    await generateImageDescription(originalMsg, chat, descApiConfig);
+                    
+                    // 同步描述到 historySlice 的 lastUserMsg 中
+                    lastUserMsg.parts.forEach((p, idx) => {
+                        if (p.type === 'image' && originalMsg.parts[idx] && originalMsg.parts[idx].description) {
+                            p.description = originalMsg.parts[idx].description;
+                        }
+                    });
+                }
+            }
+        }
+
+        if (provider === 'gemini') {
+            let lastMsgTimeForAI = 0;
+            const contents = historySlice.map(msg => {
+                const role = (msg.role === 'assistant' || msg.role === 'char') ? 'model' : 'user';
+                let prefix = '';
+                const currentMsgTime = msg.timestamp;
+                const timeDiff = currentMsgTime - lastMsgTimeForAI;
+                const isSameDay = new Date(currentMsgTime).toDateString() === new Date(lastMsgTimeForAI).toDateString();
+               
+               if (lastMsgTimeForAI === 0 || timeDiff > 20 * 60 * 1000 || !isSameDay) {
+                   const dateObj = new Date(currentMsgTime);
+                   const timeStr = `${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())} ${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`;
+                   
+                   prefix = `[system: ${timeStr}]`;
+                   
+                   if (db.apiSettings && db.apiSettings.timePerceptionEnabled && timeDiff > 30 * 60 * 1000 && lastMsgTimeForAI !== 0) {
+                       prefix += `\n[system: 距离上次互动已过去 ${formatTimeGap(timeDiff)}。话题可能已中断，请自然地开启新话题或对时间流逝做出反应。]`;
+                   }
+                   
+                   prefix += '\n';
+               }
+                lastMsgTimeForAI = currentMsgTime;
+
+                let parts;
+                if (msg.role === 'user' && msg.quote) {
+                    const replyTextMatch = msg.content.match(/\[.*?的消息：([\s\S]+?)\]/);
+                    const replyText = replyTextMatch ? replyTextMatch[1] : msg.content;
+                    let content = `[${chat.myName}引用“${msg.quote.content}”并回复：${replyText}]`;
+                    parts = [{text: content}];
+                } else if (msg.parts && msg.parts.length > 0) {
+                    parts = msg.parts.map(p => {
+                        if (p.type === 'text' || p.type === 'html') {
+                            return {text: p.text};
+                        } else if (p.type === 'image') {
+                            if (p.description) {
+                                return {text: `[图片描述：${p.description}]`};
+                            } else {
+                                const match = p.data.match(/^data:(image\/(.+));base64,(.*)$/);
+                                if (match) {
+                                    if (match[1] === 'image/gif') {
+                                        return {text: `[动态图片(GIF)]`};
+                                    }
+                                    return {inline_data: {mime_type: match[1], data: match[3]}};
+                                }
+                            }
+                        } else if (p.type === 'sticker') {
+                            if (p.description) {
+                                return {text: `[表情包画面：${p.description}]`};
+                            } else {
+                                return {text: `[一个表情包]`}; // 兜底，不再尝试发送表情包的原图数据给API
+                            }
+                        }
+                        return null;
+                    }).filter(p => p);
+                } else {
+                    let content = msg.content || '';
+                    // 展开小剧场分享卡片
+                    const theaterShareMatch = content.match(/\[小剧场分享[：:](.+?)\]/);
+                    if (theaterShareMatch) {
+                        const scenarioId = theaterShareMatch[1];
+                        let scenario = null;
+                        if (typeof db !== 'undefined' && db) {
+                            if (Array.isArray(db.theaterScenarios)) {
+                                scenario = db.theaterScenarios.find(s => s.id === scenarioId);
+                            }
+                            if (!scenario && Array.isArray(db.theaterHtmlScenarios)) {
+                                scenario = db.theaterHtmlScenarios.find(s => s.id === scenarioId);
+                            }
+                        }
+                        if (scenario) {
+                            let readableContent = scenario.content || '';
+                            if (scenario.mode === 'html' || /<[^>]+>/.test(readableContent)) {
+                                readableContent = readableContent
+                                    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                                    .replace(/<[^>]+>/g, ' ')
+                                    .replace(/\s{2,}/g, ' ')
+                                    .trim();
+                            }
+                            const title = scenario.title || '小剧场';
+                            const excerpt = readableContent;
+                            content = content.replace(
+                                /\[小剧场分享[：:].+?\]/,
+                                `（我刚刚写了一篇小剧场，标题是「${title}」。以下是我写的内容：\n${excerpt}）`
+                            );
+                        }
+                    }
+                    parts = [{text: content}];
+                }
+
+                if (prefix) {
+                    if (parts.length > 0 && parts[0].text) {
+                        parts[0].text = prefix + parts[0].text;
+                    } else {
+                        parts.unshift({text: prefix});
+                    }
+                }
+                
+                if (msg.role === 'user' && chatType === 'private' && chat.characterAutoFavoriteEnabled && parts.length > 0 && parts[0].text) {
+                    parts[0].text = '[id:' + msg.id + ']\n' + parts[0].text;
+                }
+
+                return { role, parts };
+            });
+
+            if (contents.length > 0 && contents[contents.length - 1].role === 'model' && !isBackground && !isCharBlockedMonologue) {
+                contents.push({
+                    role: 'user',
+                    parts: [{ text: '[继续对话。]' }]
+                });
+            }
+
+            if (isBackground) {
+                contents.push({
+                    role: 'user',
+                    parts: [{ text: `[系统通知：距离上次互动已有一段时间。请以${chat.realName}的身份主动发起新话题，或自然地延续之前的对话。]` }]
+                });
+            }
+            if (isCharBlockedMonologue) {
+                contents.push({
+                    role: 'user',
+                    parts: [{ text: '[用户正在查看对话框，你可以主动说些什么。]' }]
+                });
+            }
+
+            requestBody = {
+                contents: contents,
+                system_instruction: {parts: [{text: systemPrompt}]},
+                generationConfig: {
+                    temperature: db.apiSettings.temperature !== undefined ? db.apiSettings.temperature : 1.0
+                }
+            };
+            
+            // --- Gemini 联网搜索支持 ---
+            if (!isBackground && !isSummary && chatType === 'private' && chat.webSearchEnabled) {
+                let customPayload = null;
+                if (chat.webSearchPayload && chat.webSearchPayload.trim()) {
+                    try {
+                        customPayload = JSON.parse(chat.webSearchPayload.trim());
+                    } catch (e) {
+                        console.error("解析自定义联网参数 JSON 失败:", e);
+                    }
+                }
+                if (customPayload && typeof customPayload === 'object') {
+                    Object.assign(requestBody, customPayload);
+                } else {
+                    requestBody.tools = [{ googleSearch: {} }];
+                }
+            }
+        } else {
+            const messages = [{role: 'system', content: systemPrompt}];
+            
+            let lastMsgTimeForAI = 0;
+            
+            historySlice.forEach(msg => {
+               let content;
+               let prefix = '';
+               
+               const currentMsgTime = msg.timestamp;
+               const timeDiff = currentMsgTime - lastMsgTimeForAI;
+               const isSameDay = new Date(currentMsgTime).toDateString() === new Date(lastMsgTimeForAI).toDateString();
+               
+               if (lastMsgTimeForAI === 0 || timeDiff > 20 * 60 * 1000 || !isSameDay) {
+                   const dateObj = new Date(currentMsgTime);
+                   const timeStr = `${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())} ${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`;
+                   prefix = `[system: ${timeStr}]\n`;
+               }
+               lastMsgTimeForAI = currentMsgTime;
+
+               if (msg.role === 'user' && msg.quote) {
+                   const replyTextMatch = msg.content.match(/\[.*?的消息：([\s\S]+?)\]/);
+                   const replyText = replyTextMatch ? replyTextMatch[1] : msg.content;
+                   
+                   let textContent = `${prefix}[${chat.myName}引用“${msg.quote.content}”并回复：${replyText}]`;
+                   if (chatType === 'private' && chat.characterAutoFavoriteEnabled) {
+                       textContent = '[id:' + msg.id + ']\n' + textContent;
+                   }
+                   content = [{type: 'text', text: textContent}];
+
+               } else {
+                   if (msg.parts && msg.parts.length > 0) {
+                       let prefixAdded = false;
+                       content = msg.parts.map(p => {
+                           if (p.type === 'text' || p.type === 'html') {
+                               const textContent = (!prefixAdded) ? (prefix + p.text) : p.text;
+                               prefixAdded = true;
+                               return {type: 'text', text: textContent};
+                           } else if (p.type === 'image') {
+                               if (p.description) {
+                                   // 即便有描述，也同时把原图发给模型（如果模型支持的话）
+                                   const textContent = (!prefixAdded) ? (prefix + `[图片描述：${p.description}]`) : `[图片描述：${p.description}]`;
+                                   prefixAdded = true;
+                                   return [
+                                        {type: 'text', text: textContent},
+                                        {type: 'image_url', image_url: {url: p.data}}
+                                   ];
+                               } else {
+                                   return {type: 'image_url', image_url: {url: p.data}};
+                               }
+                           } else if (p.type === 'sticker') {
+                               if (p.description) {
+                                   const textContent = (!prefixAdded) ? (prefix + `[表情包画面：${p.description}]`) : `[表情包画面：${p.description}]`;
+                                   prefixAdded = true;
+                                   return {type: 'text', text: textContent};
+                               } else {
+                                   const textContent = (!prefixAdded) ? (prefix + `[一个表情包]`) : `[一个表情包]`;
+                                   prefixAdded = true;
+                                   return {type: 'text', text: textContent};
+                               }
+                           }
+                           return null;
+                       }).flat().filter(p => p);
+                   } else {
+                       content = prefix + msg.content;
+                       const theaterShareMatch = content.match(/\[小剧场分享[：:](.+?)\]/);
+                       if (theaterShareMatch) {
+                           const scenarioId = theaterShareMatch[1];
+                           let scenario = null;
+                           if (typeof db !== 'undefined' && db) {
+                               if (Array.isArray(db.theaterScenarios)) {
+                                   scenario = db.theaterScenarios.find(s => s.id === scenarioId);
+                               }
+                               if (!scenario && Array.isArray(db.theaterHtmlScenarios)) {
+                                   scenario = db.theaterHtmlScenarios.find(s => s.id === scenarioId);
+                               }
+                           }
+                           if (scenario) {
+                               let readableContent = scenario.content || '';
+                               if (scenario.mode === 'html' || /<[^>]+>/.test(readableContent)) {
+                                   readableContent = readableContent
+                                       .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                                       .replace(/<[^>]+>/g, ' ')
+                                       .replace(/\s{2,}/g, ' ')
+                                       .trim();
+                               }
+                               const title = scenario.title || '小剧场';
+                               const excerpt = readableContent;
+                               content = content.replace(
+                                   /\[小剧场分享[：:].+?\]/,
+                                   `（我刚刚写了一篇小剧场，标题是「${title}」。以下是我写的内容：\n${excerpt}）`
+                               );
+                           }
+                       }
+                   }
+                   if (msg.role === 'user' && chatType === 'private' && chat.characterAutoFavoriteEnabled) {
+                       if (typeof content === 'string') {
+                           content = '[id:' + msg.id + ']\n' + content;
+                       } else if (Array.isArray(content) && content[0] && content[0].text) {
+                           content[0].text = '[id:' + msg.id + ']\n' + content[0].text;
+                       }
+                   }
+                   
+                   if (typeof content === 'string') {
+                       content = [{type: 'text', text: content}];
+                   }
+               }
+               
+               const role = (msg.role === 'assistant' || msg.role === 'char') ? 'assistant' : 'user';
+               
+               if (Array.isArray(content) && content.every(c => c.type === 'text')) {
+                   messages.push({ role: role, content: content.map(c => c.text).join('') });
+               } else {
+                   messages.push({ role: role, content: content });
+               }
+            });
+
+            if (messages.length > 1 && messages[messages.length - 1].role === 'assistant' && !isBackground && !isCharBlockedMonologue) {
+                messages.push({
+                    role: 'user',
+                    content: '[继续对话。]'
+                });
+            }
+
+            // === 【第三步：处理后台通知与 CoT 序列】 ===
+            
+            // 1. 如果是后台消息，先插入系统通知（作为任务输入）
+            if (isBackground) {
+                messages.push({
+                    role: 'user',
+                    content: `[系统通知：距离上次互动已有一段时间。请以${chat.realName}的身份主动发起新话题，或自然地延续之前的对话。]`
+                });
+            }
+            if (isCharBlockedMonologue) {
+                messages.push({
+                    role: 'user',
+                    content: '[用户正在查看对话框，你可以主动说些什么。]'
+                });
+            }
+
+            // 2. 插入 CoT 序列（无论前台后台，只要开启就插入）
+            let cotEnabled = false;
+            let activePresetId = 'default';
+            
+            // 检查是否处于线下模式节点
+            let isOfflineNode = false;
+            if (chatType === 'private' && chat.activeNodeId && chat.nodes) {
+                const activeNode = chat.nodes.find(n => n.id === chat.activeNodeId);
+                if (activeNode) {
+                    let baseMode = (activeNode.customConfig && activeNode.customConfig.baseMode) ? activeNode.customConfig.baseMode : 
+                                   (activeNode.type === 'offline' || (activeNode.type === 'spinoff' && activeNode.spinoffMode === 'offline') ? 'offline' : 'online');
+                    if (baseMode === 'offline') {
+                        isOfflineNode = true;
+                    }
+                }
+            }
+
+            // 判断单人 CoT 设置
+            let useCharCot = false;
+            if (chatType === 'private' && chat.cotSettings && chat.cotSettings.enabled) {
+                useCharCot = true;
+            }
+
+            if (isOfflineNode) {
+                if (useCharCot) {
+                    cotEnabled = chat.cotSettings.offlineEnabled;
+                    activePresetId = chat.cotSettings.activeOfflinePresetId || 'default_offline';
+                } else {
+                    cotEnabled = db.cotSettings && db.cotSettings.offlineEnabled;
+                    activePresetId = (db.cotSettings && db.cotSettings.activeOfflinePresetId) || 'default_offline';
+                }
+            } else {
+                if (useCharCot) {
+                    cotEnabled = chat.cotSettings.chatEnabled;
+                    activePresetId = chat.cotSettings.activePresetId || 'default';
+                } else {
+                    cotEnabled = db.cotSettings && db.cotSettings.enabled;
+                    activePresetId = (db.cotSettings && db.cotSettings.activePresetId) || 'default';
+                }
+            }
+            
+            if (cotEnabled) {
+                let cotInstruction = '';
+                const preset = (db.cotPresets || []).find(p => p.id === activePresetId);
+                
+                if (preset && preset.items) {
+                    cotInstruction = preset.items
+                        .filter(item => item.enabled)
+                        .map(item => item.content)
+                        .join('\n\n');
+                }
+
+                if (cotInstruction) {
+                    // 1. 插入后置指令
+                    messages.push({
+                        role: 'system', // 或者 'user'
+                        content: cotInstruction
+                    });
+
+                    // 2. 插入触发器
+                    messages.push({
+                        role: 'user',
+                        content: '[incipere]'
+                    });
+
+                    // 3. 插入 Prefill (预填/强塞)
+                    const quickReply = db.apiSettings && db.apiSettings.quickReplyEnabled;
+                    messages.push({
+                        role: 'assistant',
+                        content: quickReply
+                            ? '<thinking>\n跳过cot，专注回复\n</thinking>\n[finire]'
+                            : '<thinking>'
+                    });
+                }
+            }
+
+        const outgoingMessages = normalizeMessagesForProvider(messages, provider);
+        requestBody = {
+            model: model, 
+            messages: outgoingMessages, 
+            stream: streamEnabled,
+            temperature: db.apiSettings.temperature !== undefined ? db.apiSettings.temperature : 1.0
+        };
+        
+        // --- 联网搜索支持 (仅为主聊天 API 请求启用) ---
+        if (!isBackground && !isSummary && chatType === 'private' && chat.webSearchEnabled) {
+            let customPayload = null;
+            if (chat.webSearchPayload && chat.webSearchPayload.trim()) {
+                try {
+                    customPayload = JSON.parse(chat.webSearchPayload.trim());
+                } catch (e) {
+                    console.error("解析自定义联网参数 JSON 失败:", e);
+                }
+            }
+
+            if (customPayload && typeof customPayload === 'object') {
+                // 如果用户提供了自定义参数，将其合并进 requestBody
+                Object.assign(requestBody, customPayload);
+            } else {
+                // 如果没有自定义参数，使用原生兼容方案
+                if (provider === 'gemini') {
+                    requestBody.tools = [{ googleSearch: {} }];
+                } else {
+                    requestBody.tools = [{ type: 'web_search' }];
+                }
+            }
+        }
+        }
+        console.log('[DEBUG] AutoReply Request Body:', JSON.stringify(requestBody));
+        const endpoint = (provider === 'gemini') ? `${url}/v1beta/models/${model}:streamGenerateContent?key=${getRandomValue(key)}` : `${url}/v1/chat/completions`;
+        const headers = (provider === 'gemini') ? {'Content-Type': 'application/json'} : {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${key}`
+        };
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(requestBody),
+            signal: currentReplyAbortController ? currentReplyAbortController.signal : undefined
+        });
+        if (!response.ok) {
+            const error = new Error(`API Error: ${response.status} ${await response.text()}`);
+            error.response = response;
+            throw error;
+        }
+        
+        if (streamEnabled) {
+            await processStream(response, chat, provider, chatId, chatType, isBackground, isCharBlockedMonologue);
+        } else {
+            let result;
+            try {
+                result = await response.json();
+                console.log('【API完整响应数据】:', result);
+            } catch (e) {
+                const text = await response.text();
+                console.error("Failed to parse JSON:", text);
+                throw new Error(`API返回了非JSON格式数据 (可能是网页HTML)。请检查API地址是否正确。原始内容开头: ${text.substring(0, 50)}...`);
+            }
+
+            let fullResponse = "";
+            if (provider === 'gemini') {
+                fullResponse = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            } else {
+                fullResponse = result.choices[0].message.content;
+            }
+            
+            // === 【补丁：把被吃掉的开头补回来】 ===
+            // 仅在 CoT 开启且检测到闭合标签时补全
+            let isOfflineNode = false;
+            if (chatType === 'private' && chat.activeNodeId && chat.nodes) {
+                const activeNode = chat.nodes.find(n => n.id === chat.activeNodeId);
+                if (activeNode) {
+                    let baseMode = (activeNode.customConfig && activeNode.customConfig.baseMode) ? activeNode.customConfig.baseMode : 
+                                   (activeNode.type === 'offline' || (activeNode.type === 'spinoff' && activeNode.spinoffMode === 'offline') ? 'offline' : 'online');
+                    if (baseMode === 'offline') {
+                        isOfflineNode = true;
+                    }
+                }
+            }
+            
+            let useCharCot = false;
+            if (chatType === 'private' && chat.cotSettings && chat.cotSettings.enabled) {
+                useCharCot = true;
+            }
+            
+            let cotEnabled = false;
+            if (isOfflineNode) {
+                cotEnabled = useCharCot ? chat.cotSettings.offlineEnabled : (db.cotSettings && db.cotSettings.offlineEnabled);
+            } else {
+                cotEnabled = useCharCot ? chat.cotSettings.chatEnabled : (db.cotSettings && db.cotSettings.enabled);
+            }
+            // 【修改】去掉了 !isBackground，确保后台模式也能正确补全标签
+            if (cotEnabled && fullResponse && !fullResponse.trim().startsWith('<thinking>')) {
+                 if (fullResponse.includes('</thinking>')) {
+                     fullResponse = '<thinking>' + fullResponse;
+                 }
+            }
+            // ===================================
+            
+            
+            await handleAiReplyContent(fullResponse, chat, chatId, chatType, isBackground, isCharBlockedMonologue);
+        }
+
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            if (!isBackground && typeof showToast === 'function') showToast('已暂停调用');
+        } else {
+            if (!isBackground) showApiError(error);
+            else console.error("Background Auto-Reply Error:", error);
+        }
+    } finally {
+        if (!isBackground) {
+            currentReplyAbortController = null;
+            isGenerating = false;
+            getReplyBtn.disabled = false;
+            regenerateBtn.disabled = false;
+            // 如果正在生成小剧场，不隐藏提示（让小剧场生成过程显示提示）
+            if (!typingIndicator || typingIndicator.getAttribute('data-theater-generating') !== 'true') {
+                typingIndicator.style.display = 'none';
+            }
+        }
+    }
+}
+
+async function processStream(response, chat, apiType, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false) {
+    const reader = response.body.getReader(), decoder = new TextDecoder();
+    let fullResponse = "", accumulatedChunk = "";
+    for (; ;) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        accumulatedChunk += decoder.decode(value, {stream: true});
+        if (apiType === "openai" || apiType === "deepseek" || apiType === "claude" || apiType === "newapi") {
+            const parts = accumulatedChunk.split("\n\n");
+            accumulatedChunk = parts.pop();
+            for (const part of parts) {
+                if (part.startsWith("data: ")) {
+                    const data = part.substring(6);
+                    if (data.trim() !== "[DONE]") {
+                        try {
+                            fullResponse += JSON.parse(data).choices[0].delta?.content || "";
+                        } catch (e) { 
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (apiType === "gemini") {
+        try {
+            const parsedStream = JSON.parse(accumulatedChunk);
+            fullResponse = parsedStream.map(item => item.candidates?.[0]?.content?.parts?.[0]?.text || "").join('');
+        } catch (e) {
+            console.error("Error parsing Gemini stream:", e, "Chunk:", accumulatedChunk);
+            if (!isBackground) showToast("解析Gemini响应失败");
+            return;
+        }
+    }
+    // === 【补丁：补全流式输出时丢失的开头标签】 ===
+    // 无论前台后台，只要是CoT开启且被预填吃掉了开头，都要补回来
+    let isOfflineNode = false;
+    if (targetChatType === 'private' && chat.activeNodeId && chat.nodes) {
+        const activeNode = chat.nodes.find(n => n.id === chat.activeNodeId);
+        if (activeNode) {
+            let baseMode = (activeNode.customConfig && activeNode.customConfig.baseMode) ? activeNode.customConfig.baseMode : 
+                           (activeNode.type === 'offline' || (activeNode.type === 'spinoff' && activeNode.spinoffMode === 'offline') ? 'offline' : 'online');
+            if (baseMode === 'offline') {
+                isOfflineNode = true;
+            }
+        }
+    }
+    
+    let useCharCot = false;
+    if (targetChatType === 'private' && chat.cotSettings && chat.cotSettings.enabled) {
+        useCharCot = true;
+    }
+    
+    let cotEnabled = false;
+    if (isOfflineNode) {
+        cotEnabled = useCharCot ? chat.cotSettings.offlineEnabled : (db.cotSettings && db.cotSettings.offlineEnabled);
+    } else {
+        cotEnabled = useCharCot ? chat.cotSettings.chatEnabled : (db.cotSettings && db.cotSettings.enabled);
+    }
+    // 【修改】去掉了 !isBackground，确保后台模式也能正确补全标签
+    if (cotEnabled && fullResponse && !fullResponse.trim().startsWith('<thinking>')) {
+         // 这里判断：如果内容里有闭合的 </thinking> 但开头没有 <thinking>，说明开头被 Prefill 吃掉了
+         if (fullResponse.includes('</thinking>')) {
+             fullResponse = '<thinking>' + fullResponse;
+         }
+    }
+
+    // ===================
+    await handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground, isCharBlockedMonologue);
+}
+
+/** 返回该角色在手机掌控下可见的角色与群聊（未开启角色过滤则返回全部，开启则只返回指定的角色及所在群聊） */

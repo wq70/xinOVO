@@ -1,0 +1,12 @@
+{
+  "name": "xinovo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "node scripts/verify.mjs"
+  },
+  "devDependencies": {
+    "parse5": "8.0.1"
+  }
+}

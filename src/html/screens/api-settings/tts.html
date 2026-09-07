@@ -1,0 +1,209 @@
+                    <!-- 角色 TTS 配置 (独立保存) -->
+                    <div class="kkt-group" style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #eee;">
+                        <div style="margin-bottom: 15px;">
+                            <h3 style="margin: 0; font-size: 16px; color: var(--primary-color);">角色 TTS 配置</h3>
+                            <p style="font-size: 12px; color: #999; margin: 5px 0 0;">角色语音合成，用于播放角色消息</p>
+                        </div>
+                        
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">启用 TTS</div>
+                            <div class="kkt-item-control">
+                                <label class="kkt-switch">
+                                    <input type="checkbox" id="minimax-tts-enabled">
+                                    <span class="kkt-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="kkt-item">
+                            <div class="kkt-item-label">TTS 提供商</div>
+                            <div class="kkt-item-control">
+                                <select id="tts-provider"
+                                    style="border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                    <option value="minimax" selected>Minimax (海螺)</option>
+                                </select>
+                                <span class="kkt-arrow">›</span>
+                            </div>
+                        </div>
+
+                        <!-- Minimax TTS 专属配置 -->
+                        <div id="minimax-tts-config-wrap">
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">Group ID</div>
+                                <div class="kkt-item-control">
+                                    <input type="text" id="minimax-group-id" autocomplete="off"
+                                        placeholder="输入 GroupId"
+                                        style="text-align:right; border:none; background:transparent; width: 100%;">
+                                </div>
+                            </div>
+                            
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">API Key</div>
+                                <div class="kkt-item-control">
+                                    <input type="password" id="minimax-api-key" autocomplete="new-password"
+                                        placeholder="输入 API Key"
+                                        style="text-align:right; border:none; background:transparent; width: 100%;">
+                                </div>
+                            </div>
+                            
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">域名选择</div>
+                                <div class="kkt-item-control">
+                                    <select id="minimax-domain"
+                                        style="border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                        <option value="api.minimaxi.chat">国际 (api.minimaxi.chat)</option>
+                                        <option value="api.minimaxi.com">国际 (api.minimaxi.com)</option>
+                                        <option value="api.minimax.chat">国内 (api.minimax.chat)</option>
+                                    </select>
+                                    <span class="kkt-arrow">›</span>
+                                </div>
+                            </div>
+                            
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">TTS 模型</div>
+                                <div class="kkt-item-control">
+                                    <select id="minimax-tts-model"
+                                        style="border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                        <option value="speech-01">speech-01</option>
+                                        <option value="speech-02-turbo">speech-02-turbo</option>
+                                        <option value="speech-02-hd">speech-02-hd</option>
+                                        <option value="speech-2.6-turbo">speech-2.6-turbo</option>
+                                        <option value="speech-2.6-hd">speech-2.6-hd</option>
+                                        <option value="speech-2.8-turbo">speech-2.8-turbo</option>
+                                        <option value="speech-2.8-hd" selected>speech-2.8-hd (推荐)</option>
+                                    </select>
+                                    <span class="kkt-arrow">›</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 10px; margin-top: 15px;">
+                            <button type="button" class="btn btn-primary" id="save-minimax-tts-btn"
+                                style="flex: 1;">
+                                保存 TTS 配置
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="test-minimax-tts-btn"
+                                style="flex: 1;">
+                                测试播放
+                            </button>
+                        </div>
+                        
+                        <!-- TTS 预设管理 -->
+                        <div style="margin-top:20px;">
+                            <div id="tts-presets-control"
+                                style="padding:12px; border-radius:8px; background: #f5f5f5; border: 1px solid #eee;">
+                                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                    <label style="min-width:60px; color:#666; font-size: 14px;">TTS预设</label>
+                                    <select id="tts-preset-select"
+                                        style="flex:1; padding:6px; border-radius:6px; border:1px solid #ddd;">
+                                        <option value="">— 选择 —</option>
+                                    </select>
+                                    <button id="tts-apply-preset" class="btn btn-primary btn-small"
+                                        style="padding: 6px 12px;">应用</button>
+                                </div>
+                                <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
+                                    <button id="tts-save-preset" class="btn btn-small" style="flex: 1;">另存为</button>
+                                    <button id="tts-manage-presets" class="btn btn-small" style="flex: 1;">管理</button>
+                                    <button id="tts-import-presets" class="btn btn-small" style="flex: 1;">导入</button>
+                                    <button id="tts-export-presets" class="btn btn-small" style="flex: 1;">导出</button>
+                                </div>
+                            </div>
+                            <div id="tts-presets-modal"
+                                style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:9999;align-items:center;justify-content:center;">
+                                <div
+                                    style="width:640px;max-width:94%;background:var(--panel-bg,#fff);padding:16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.12);">
+                                    <h3 style="margin:0 0 12px 0;">TTS 预设管理</h3>
+                                    <div id="tts-presets-list"
+                                        style="max-height:360px;overflow:auto;border:1px solid #f0f0f0;padding:8px;border-radius:6px;">
+                                    </div>
+                                    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+                                        <button id="tts-close-modal" class="btn btn-primary">关闭</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 用户 TTS 配置 (独立于角色) -->
+                    <div class="kkt-group collapsible-section" style="margin-top: 30px; padding-top: 0; border-top: 2px solid #eee;">
+                        <div class="collapsible-header" style="padding: 15px 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" onclick="this.parentElement.classList.toggle('open')">
+                            <div>
+                                <h3 style="margin: 0; font-size: 16px; color: var(--primary-color);">用户 TTS 配置</h3>
+                                <p style="font-size: 12px; color: #999; margin: 5px 0 0;">用户语音合成，用于播放用户消息；不启用则不显示聊天中的用户音色设置</p>
+                            </div>
+                            <span class="collapsible-arrow">▼</span>
+                        </div>
+                        <div class="collapsible-content">
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">启用用户 TTS</div>
+                            <div class="kkt-item-control">
+                                <label class="kkt-switch">
+                                    <input type="checkbox" id="minimax-user-tts-enabled">
+                                    <span class="kkt-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                            <div class="kkt-item">
+                                <div class="kkt-item-label">用户 TTS 提供商</div>
+                                <div class="kkt-item-control">
+                                    <select id="user-tts-provider"
+                                        style="border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                        <option value="minimax" selected>Minimax (海螺)</option>
+                                    </select>
+                                    <span class="kkt-arrow">›</span>
+                                </div>
+                            </div>
+
+                            <div id="minimax-user-tts-config-wrap">
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">Group ID</div>
+                                    <div class="kkt-item-control">
+                                        <input type="text" id="minimax-user-group-id" autocomplete="off"
+                                            placeholder="输入 GroupId"
+                                            style="text-align:right; border:none; background:transparent; width: 100%;">
+                                    </div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">API Key</div>
+                                    <div class="kkt-item-control">
+                                        <input type="password" id="minimax-user-api-key" autocomplete="new-password"
+                                            placeholder="输入 API Key"
+                                            style="text-align:right; border:none; background:transparent; width: 100%;">
+                                    </div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">域名选择</div>
+                                    <div class="kkt-item-control">
+                                        <select id="minimax-user-domain"
+                                            style="border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                            <option value="api.minimaxi.chat">国际 (api.minimaxi.chat)</option>
+                                            <option value="api.minimaxi.com">国际 (api.minimaxi.com)</option>
+                                            <option value="api.minimax.chat">国内 (api.minimax.chat)</option>
+                                        </select>
+                                        <span class="kkt-arrow">›</span>
+                                    </div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">TTS 模型</div>
+                                    <div class="kkt-item-control">
+                                        <select id="minimax-user-tts-model"
+                                            style="border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
+                                            <option value="speech-01">speech-01</option>
+                                            <option value="speech-02-turbo">speech-02-turbo</option>
+                                            <option value="speech-02-hd">speech-02-hd</option>
+                                            <option value="speech-2.6-turbo">speech-2.6-turbo</option>
+                                            <option value="speech-2.6-hd">speech-2.6-hd</option>
+                                            <option value="speech-2.8-turbo">speech-2.8-turbo</option>
+                                            <option value="speech-2.8-hd" selected>speech-2.8-hd (推荐)</option>
+                                        </select>
+                                        <span class="kkt-arrow">›</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <p style="font-size: 12px; color: #999; margin-top: 10px;">保存请点击上方「保存 TTS 配置」按钮</p>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
