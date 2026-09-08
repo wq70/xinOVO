@@ -87,6 +87,42 @@ function initDatabase() {
         globalSettings: 'key',
         archives: '&id,characterId,timestamp'
     });
+    dexieDB.version(4).stores({
+        characters: '&id', groups: '&id', worldBooks: '&id', myStickers: '&id', globalSettings: 'key', archives: '&id,characterId,timestamp',
+        mcpConnections: '&id,enabled,status,updatedAt', mcpActivities: '&id,connectionId,status,createdAt', mcpSettings: '&id'
+    });
+    dexieDB.version(5).stores({
+        characters: '&id', groups: '&id', worldBooks: '&id', myStickers: '&id', globalSettings: 'key', archives: '&id,characterId,timestamp',
+        mcpConnections: '&id,type,enabled,status,updatedAt',
+        mcpActivities: '&id,connectionId,status,chatId,createdAt',
+        mcpSettings: '&id',
+        mcpSecrets: '&id',
+        mcpSessions: '&id,connectionId,updatedAt',
+        mcpCapabilities: '&id,connectionId,kind,updatedAt',
+        mcpSubscriptions: '&id,connectionId,uri,status',
+        mcpTasks: '&id,connectionId,status,updatedAt',
+        mcpOAuthStates: '&id,connectionId,createdAt'
+    }).upgrade(async transaction => {
+        const connections = transaction.table('mcpConnections');
+        const secrets = transaction.table('mcpSecrets');
+        const records = await connections.toArray();
+        const secureRecords = [];
+        records.forEach(connection => {
+            const secure = {
+                id: connection.id,
+                secret: connection.secret || '',
+                pairingCode: connection.pairingCode || '',
+                deviceId: connection.deviceId || '',
+                updatedAt: Date.now()
+            };
+            if (secure.secret || secure.pairingCode || secure.deviceId) secureRecords.push(secure);
+            delete connection.secret;
+            delete connection.pairingCode;
+            delete connection.deviceId;
+        });
+        if (records.length) await connections.bulkPut(records);
+        if (secureRecords.length) await secrets.bulkPut(secureRecords);
+    });
 }
 
 // 数据保存与加载

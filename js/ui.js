@@ -457,7 +457,7 @@ function setupHomeScreen() {
                     <span class="app-name">${getName('appearance-settings-screen')}</span>
                 </a>
                 <a href="#" class="app-icon" data-action="biekan-app">
-                    <img src="${getIcon('biekan-app')}" alt="别看" class="icon-img">
+                    <img src="${getIcon('biekan-app')}" alt="MCP" class="icon-img">
                     <span class="app-name">${getName('biekan-app')}</span>
                 </a>
                 <a href="#" class="app-icon" data-action="xiaowu-app">
@@ -518,7 +518,7 @@ function setupHomeScreen() {
             };
         }
     });
-    document.querySelector('[data-action="biekan-app"]')?.addEventListener('click', (e) => { e.preventDefault(); showToast('别看APP正在开发中…'); });
+    document.querySelector('[data-action="biekan-app"]')?.addEventListener('click', (e) => { e.preventDefault(); if (window.McpManager) window.McpManager.open(); });
     document.querySelector('[data-action="xiaowu-app"]')?.addEventListener('click', (e) => { e.preventDefault(); showToast('小屋APP正在开发中…'); });
     document.querySelector('[data-action="magic-room-app"]')?.addEventListener('click', (e) => { 
         e.preventDefault(); 

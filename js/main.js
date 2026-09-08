@@ -124,6 +124,7 @@ const init = async () => {
     if (typeof initMoreMenu === 'function') initMoreMenu();
     if (typeof setupPhoneScreen === 'function') setupPhoneScreen();
     if (typeof initCotSettings === 'function') initCotSettings();
+    if (window.McpManager) { window.McpManager.injectPermissionContainers(); await window.McpManager.init(); }
     if (window.VideoCallModule) window.VideoCallModule.init();
     if (typeof NodeSystem !== 'undefined') NodeSystem.init();
     if (typeof KeepAliveModule !== 'undefined') KeepAliveModule.init();

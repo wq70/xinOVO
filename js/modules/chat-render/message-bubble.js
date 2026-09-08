@@ -17,6 +17,15 @@ function createMessageBubbleElement(message, isContinuous = false) {
     // 拦截：hiddenFromDisplay 标记的消息（如角色自知上下文消息），不渲染成气泡
     if (message.hiddenFromDisplay && !isDebugMode) return null;
 
+    // MCP 活动卡是用户可见的执行状态，但永远不作为普通聊天内容发回模型。
+    if (message.type === 'mcp_activity' && window.mcpManager && typeof window.mcpManager.renderMessageCard === 'function') {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'message-wrapper received mcp-activity-wrapper';
+        wrapper.dataset.id = id || '';
+        wrapper.innerHTML = window.mcpManager.renderMessageCard(message);
+        return wrapper;
+    }
+
     // 节点系统：渲染独立摘要消息
     if (message.isNodeSummaryMsg) {
         const wrapper = document.createElement('div');

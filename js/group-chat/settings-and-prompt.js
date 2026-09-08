@@ -1,6 +1,7 @@
 function loadGroupSettingsToSidebar() {
     const group = db.groups.find(g => g.id === currentChatId);
     if (!group) return;
+    if (window.McpManager) window.McpManager.renderPermissionEditor(document.getElementById('group-mcp-settings'), group);
     const themeSelect = document.getElementById('setting-group-theme-color');
     if (themeSelect.options.length === 0) {
         Object.keys(colorThemes).forEach(key => {
@@ -479,6 +480,7 @@ async function saveGroupSettingsFromSidebar(showToastFlag = true) {
     group.autoJournalEnabled = document.getElementById('setting-group-auto-journal-enabled').checked;
     const autoJournalIntervalInput = parseInt(document.getElementById('setting-group-auto-journal-interval').value, 10);
     group.autoJournalInterval = (isNaN(autoJournalIntervalInput) || autoJournalIntervalInput < 10) ? 100 : autoJournalIntervalInput;
+    if (window.McpManager && document.getElementById('group-mcp-settings')) group.mcpSettings = window.McpManager.readPermissionEditor(document.getElementById('group-mcp-settings'));
     group.useCustomBubbleCss = document.getElementById('setting-group-use-custom-css').checked;
     group.customBubbleCss = document.getElementById('setting-group-custom-bubble-css').value;
     

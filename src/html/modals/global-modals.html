@@ -163,6 +163,43 @@
         </div>
     </div>
 
+    <div id="auto-journal-visual-modal" class="modal-overlay" aria-hidden="true">
+        <div class="modal-window auto-journal-visual-window" role="dialog" aria-modal="true" aria-labelledby="auto-journal-visual-title">
+            <div class="auto-journal-visual-header">
+                <div class="auto-journal-visual-heading-wrap">
+                    <h3 id="auto-journal-visual-title">自动总结进度</h3>
+                    <span id="auto-journal-visual-status" class="auto-journal-status-pill">未开启</span>
+                </div>
+                <button type="button" id="auto-journal-visual-close" class="btn btn-small btn-neutral">关闭</button>
+            </div>
+
+            <div class="auto-journal-progress-summary" aria-live="polite">
+                <div class="auto-journal-progress-line">
+                    <span id="auto-journal-progress-label">距下次自动总结</span>
+                    <span id="auto-journal-progress-value" class="auto-journal-progress-value">0 / 100 条</span>
+                </div>
+                <div id="auto-journal-progress-track" class="auto-journal-progress-track" role="progressbar"
+                    aria-label="自动总结累计进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div id="auto-journal-progress-fill" class="auto-journal-progress-fill"></div>
+                </div>
+                <div class="auto-journal-progress-meta">
+                    <span id="auto-journal-progress-cursor">尚未生成自动总结</span>
+                    <span id="auto-journal-progress-remaining">还有 100 条触发</span>
+                </div>
+            </div>
+
+            <div class="auto-journal-visual-actions">
+                <button type="button" id="auto-journal-visual-latest" class="btn btn-small btn-secondary">总结到最新</button>
+                <button type="button" id="auto-journal-visual-retry" class="btn btn-small btn-secondary">重试失败范围</button>
+            </div>
+
+            <div class="auto-journal-range-section">
+                <div class="auto-journal-range-title">范围记录</div>
+                <div id="auto-journal-range-list" class="auto-journal-range-list"></div>
+            </div>
+        </div>
+    </div>
+
     <div id="memory-template-editor-modal" class="modal-overlay">
         <div class="modal-window" style="width:min(92vw, 720px); max-height:80vh; overflow:hidden; display:flex; flex-direction:column;">
             <h3 style="margin:0 0 10px 0;">模板 JSON 编辑器</h3>

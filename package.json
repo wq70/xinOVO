@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "check": "node scripts/verify.mjs"
+    "check": "node scripts/verify.mjs",
+    "test:mcp": "node scripts/test-mcp.mjs"
   },
   "devDependencies": {
     "parse5": "8.0.1"

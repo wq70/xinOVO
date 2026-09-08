@@ -92,7 +92,7 @@ const defaultIcons = {
     'magic-room-screen': {name: '魔法屋', url: 'https://i.postimg.cc/hPCcZG3v/png-(143).png'},
     'appearance-settings-screen': {name: '外观设置', url: 'https://i.postimg.cc/KcgT1wzQ/DF424409FC54EDFF74D78ECB1311E1D7.png'},
     'theater-screen': {name: '小剧场', url: 'https://i.postimg.cc/t4gXjG8P/7632D362A35EC703E7A81F6FF0F8AE34.png'},
-    'biekan-app': {name: '别看', url: 'https://i.postimg.cc/5y6G7fn4/5A615115038157EA857BB5D4D8E54EC7.png'},
+    'biekan-app': {name: 'MCP', url: 'https://i.postimg.cc/5y6G7fn4/5A615115038157EA857BB5D4D8E54EC7.png'},
     'xiaowu-app': {name: '小屋', url: 'https://i.postimg.cc/T1pS7TCw/9679677EBE50220F4B5BFE21575E096E.png'}
 };
 

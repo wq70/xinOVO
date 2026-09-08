@@ -1,3 +1,76 @@
+function escapeJournalHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function parseJournalResponse(rawContent) {
+    if (typeof rawContent !== 'string' || !rawContent.trim()) {
+        throw new Error('总结 API 返回了空内容。');
+    }
+
+    const cleaned = rawContent.trim()
+        .replace(/^```(?:xml|json)?\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+    const titleMatch = cleaned.match(/<title(?:\s[^>]*)?>([\s\S]*?)<\/title>/i);
+    const contentMatch = cleaned.match(/<content(?:\s[^>]*)?>([\s\S]*?)<\/content>/i);
+    let title = titleMatch ? titleMatch[1].trim() : '';
+    let content = contentMatch ? contentMatch[1].trim() : '';
+
+    if (!title || !content) {
+        try {
+            const parsed = JSON.parse(cleaned);
+            const candidate = parsed && typeof parsed.journal === 'object' ? parsed.journal : parsed;
+            title = typeof candidate.title === 'string' ? candidate.title.trim() : title;
+            content = typeof candidate.content === 'string' ? candidate.content.trim() : content;
+        } catch (_) {
+            // XML and JSON are both accepted; invalid output is handled below.
+        }
+    }
+
+    if (!title || !content) {
+        throw new Error('总结 API 返回格式不正确：缺少有效的标题或正文，原消息范围未标记为已总结。');
+    }
+
+    return { title, content };
+}
+
+async function requestJournalSummary(apiConfig, summaryPrompt) {
+    let { url, key, model, provider } = apiConfig || {};
+    if (!url || !key || !model) {
+        throw new Error('API设置不完整。');
+    }
+
+    url = url.replace(/\/+$/, '');
+    const selectedKey = typeof getRandomValue === 'function' ? getRandomValue(key) : key;
+    let requestBody;
+    let endpoint;
+    let headers;
+
+    if (provider === 'gemini') {
+        requestBody = {
+            contents: [{ role: 'user', parts: [{ text: summaryPrompt }] }],
+            generationConfig: { temperature: 0.7 }
+        };
+        endpoint = `${url}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(selectedKey)}`;
+        headers = { 'Content-Type': 'application/json' };
+    } else {
+        requestBody = {
+            model,
+            messages: [{ role: 'user', content: summaryPrompt }],
+            temperature: 0.7
+        };
+        endpoint = `${url}/v1/chat/completions`;
+        headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${selectedKey}` };
+    }
+
+    return fetchAiResponse(apiConfig, requestBody, headers, endpoint);
+}
+
 function renderJournalList(searchQuery = '') {
     const container = document.getElementById('journal-list-container');
     const placeholder = document.getElementById('no-journals-placeholder');
@@ -77,7 +150,7 @@ function renderJournalList(searchQuery = '') {
         card.innerHTML = `
             <div class="journal-checkbox"></div>
             <div class="journal-card-header">
-                <div class="journal-card-title">${journal.title}</div>
+                <div class="journal-card-title">${escapeJournalHtml(journal.title)}</div>
             </div>
             <div class="journal-card-actions">
                 <button class="action-icon-btn favorite-journal-btn" title="收藏">
@@ -109,31 +182,37 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
         showToast('正在生成日记，请稍候...');
     }
 
-    // 显示列表占位卡片
+    const targetChatId = options.targetChatId || currentChatId;
+    const targetChatType = options.targetChatType || currentChatType;
+    const isBackgroundAutoJournal = !!options.isAutoJournal;
+
+    // 显示列表占位卡片（后台自动总结不操作当前页面）
     const container = document.getElementById('journal-list-container');
     const placeholder = document.getElementById('no-journals-placeholder');
-    if (placeholder) placeholder.style.display = 'none';
-
-    const loadingCard = document.createElement('li');
-    loadingCard.className = 'journal-card generating';
-    loadingCard.id = 'journal-generating-card';
-    loadingCard.innerHTML = `
-        <div class="spinner"></div>
-        <div class="text">正在${currentChatType === 'group' ? '总结群聊' : '编织回忆'}...</div>
-    `;
-    
-    if (container.firstChild) {
-        container.insertBefore(loadingCard, container.firstChild);
-    } else {
-        container.appendChild(loadingCard);
+    if (!isBackgroundAutoJournal && container) {
+        if (placeholder) placeholder.style.display = 'none';
+        const loadingCard = document.createElement('li');
+        loadingCard.className = 'journal-card generating';
+        loadingCard.id = 'journal-generating-card';
+        loadingCard.innerHTML = `
+            <div class="spinner"></div>
+            <div class="text">正在${targetChatType === 'group' ? '总结群聊' : '编织回忆'}...</div>
+        `;
+        if (container.firstChild) {
+            container.insertBefore(loadingCard, container.firstChild);
+        } else {
+            container.appendChild(loadingCard);
+        }
+        container.scrollTop = 0;
     }
-    container.scrollTop = 0;
 
-    isGenerating = true; 
-    generatingChatId = currentChatId;
+    if (!isBackgroundAutoJournal) {
+        isGenerating = true;
+        generatingChatId = targetChatId;
+    }
 
     try {
-        const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
+        const chat = (targetChatType === 'private') ? db.characters.find(c => c.id === targetChatId) : db.groups.find(g => g.id === targetChatId);
         if (!chat) {
             throw new Error("未找到当前聊天。");
         }
@@ -141,13 +220,25 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
 
         const startIndex = start - 1;
         const endIndex = end;
-        
+
         if (startIndex < 0 || endIndex > chat.history.length || startIndex >= endIndex) {
             throw new Error("无效的消息范围。");
         }
 
+        const rangeSnapshot = chat.history.slice(startIndex, endIndex);
+        const rangeMessageIds = rangeSnapshot.map(message => message && message.id).filter(Boolean);
+        const rangeMessageSignature = JSON.stringify(rangeSnapshot.map(message => ({
+            id: message && message.id,
+            role: message && message.role,
+            content: message && message.content,
+            parts: message && message.parts,
+            timestamp: message && message.timestamp
+        })));
+        const rangeStartMessage = rangeSnapshot[0] || null;
+        const rangeEndMessage = rangeSnapshot[rangeSnapshot.length - 1] || null;
+
         // ...
-        let messagesToSummarize = chat.history.slice(startIndex, endIndex);
+        let messagesToSummarize = rangeSnapshot;
         
         // 1. 保持原样：第三个参数设为 true，确保你想要的“高权重”隐藏消息能被读进来
         messagesToSummarize = filterHistoryForAI(chat, messagesToSummarize, true);
@@ -156,6 +247,10 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
         // 你的 chat_ai.js 中生成的思考消息带有 isThinking: true 属性
         // 即使它们包含在上下文里，我们也在生成日记前把它们扔掉
         messagesToSummarize = messagesToSummarize.filter(m => !m.isThinking);
+
+        if (messagesToSummarize.length === 0) {
+            throw new Error('所选范围内没有可用于总结的消息。');
+        }
 
         // 3. 【可选保险】防止只有标签没有属性的情况（针对旧历史记录）
         // 如果你担心以前的历史记录里有 thinking 标签但没有 isThinking 属性，可以加一步正则清洗
@@ -181,7 +276,7 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
             }
         }
 
-        if (currentChatType === 'group') {
+        if (targetChatType === 'group') {
             // 群聊逻辑
             // 收集关联的 + 全局的世界书（去重）
             const associatedIds = chat.worldBookIds || [];
@@ -365,43 +460,26 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
             apiConfig = db.apiSettings;
         }
         
-        let { url, key, model, provider } = apiConfig;
-        if (!url || !key || !model) {
-            throw new Error("API设置不完整。");
-        }
-
-        if (url.endsWith('/')) {
-            url = url.slice(0, -1);
-        }
-
-        const requestBody = {
-            model: model,
-            messages: [{ role: 'user', content: summaryPrompt }],
-            temperature: 0.7
-        };
-        const endpoint = `${url}/v1/chat/completions`;
-        const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` };
-
-        const rawContent = await fetchAiResponse(apiConfig, requestBody, headers, endpoint);
-
-        const titleMatch = rawContent.match(/<title>([\s\S]*?)<\/title>/i);
-        const contentMatch = rawContent.match(/<content>([\s\S]*?)<\/content>/i);
-
-        const journalData = {
-            title: titleMatch ? titleMatch[1].trim() : "无标题日记",
-            content: contentMatch ? contentMatch[1].trim() : "内容提取失败。"
-        };
+        const rawContent = await requestJournalSummary(apiConfig, summaryPrompt);
+        const journalData = parseJournalResponse(rawContent);
 
         const newJournal = {
-            id: `journal_${Date.now()}`,
+            id: `journal_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
             range: { start, end },
             title: journalData.title,
             content: journalData.content,
             createdAt: Date.now(),
-            chatId: currentChatId,
-            chatType: currentChatType,
+            chatId: targetChatId,
+            chatType: targetChatType,
             isFavorited: false 
         };
+
+        newJournal.range.startMessageId = rangeStartMessage ? rangeStartMessage.id : null;
+        newJournal.range.endMessageId = rangeEndMessage ? rangeEndMessage.id : null;
+
+        if (options.deferCommit) {
+            return { journal: newJournal, rangeStartMessage, rangeEndMessage, rangeMessageIds, rangeMessageSignature };
+        }
 
         // 如果是节点总结，附加节点信息
         if (nodeInfo && nodeInfo.isNodeSummary) {
@@ -444,9 +522,11 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
         }
 
         await saveData();
-        refreshAutoJournalButton(chat, currentChatType);
+        refreshAutoJournalButton(chat, targetChatType);
 
-        renderJournalList();
+        if (currentChatId === targetChatId && currentChatType === targetChatType) {
+            renderJournalList();
+        }
         
         // 如果是重新总结且在节点大厅，刷新列表
         if (nodeInfo && nodeInfo.isResummarize && document.getElementById('node-system-screen').classList.contains('active')) {
@@ -465,7 +545,7 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
         if(card) card.remove();
         
         // 如果列表为空，恢复显示 placeholder
-        const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
+        const chat = (targetChatType === 'private') ? db.characters.find(c => c.id === targetChatId) : db.groups.find(g => g.id === targetChatId);
         if (!chat || !chat.memoryJournals || chat.memoryJournals.length === 0) {
              const placeholder = document.getElementById('no-journals-placeholder');
              if (placeholder) placeholder.style.display = 'block';
@@ -477,8 +557,9 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
 
         showApiError(error);
     } finally {
-        isGenerating = false; 
-        generatingChatId = null;
+        if (!isBackgroundAutoJournal) {
+            isGenerating = false;
+            generatingChatId = null;
+        }
     }
 }
-

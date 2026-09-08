@@ -66,8 +66,9 @@ function ensureAutoJournalState(chat) {
         chat.autoJournalPending = false;
     }
 
-    // 修复卡死：如果记录是 running 但当前并没有在生成，强行重置为 idle
-    if (chat.autoJournalState === 'running' && (typeof isGenerating === 'undefined' || !isGenerating || generatingChatId !== chat.id)) {
+    // 页面刷新后恢复遗留的 running；内存中仍有对应任务时不得误判为卡死。
+    const hasActiveTask = typeof autoJournalActiveTasks !== 'undefined' && autoJournalActiveTasks.has(chat.id);
+    if (chat.autoJournalState === 'running' && !hasActiveTask) {
         chat.autoJournalState = 'idle';
     }
 
@@ -103,19 +104,33 @@ function getAutoJournalCursorInfo(chat) {
         if (foundIndex !== -1) {
             nextStartIndex = foundIndex + 1;
         } else {
-            // 极简容错：直接读取历史日记中的最大 range.end
+            const savedTimestamp = Number(chat.lastSummarizedMsgTimestamp);
+            if (Number.isFinite(savedTimestamp) && savedTimestamp > 0) {
+                for (let index = 0; index < history.length; index++) {
+                    const messageTimestamp = Number(history[index] && history[index].timestamp);
+                    if (Number.isFinite(messageTimestamp) && messageTimestamp <= savedTimestamp) {
+                        nextStartIndex = index + 1;
+                    }
+                }
+            }
+
+            // 兼容没有消息 ID/时间戳的旧数据。新记录只使用稳定消息 ID 恢复。
             let maxEnd = 0;
-            if (Array.isArray(chat.memoryJournals)) {
+            if (nextStartIndex === 0 && Array.isArray(chat.memoryJournals)) {
                 for (const j of chat.memoryJournals) {
-                    if (j.range && typeof j.range.end === 'number') {
+                    const endMessageId = j && j.range && j.range.endMessageId;
+                    const journalEndIndex = endMessageId ? history.findIndex(message => message.id === endMessageId) : -1;
+                    if (journalEndIndex !== -1) {
+                        nextStartIndex = Math.max(nextStartIndex, journalEndIndex + 1);
+                    } else if (j.range && typeof j.range.end === 'number') {
                         maxEnd = Math.max(maxEnd, j.range.end);
                     }
                 }
             }
             
-            if (maxEnd > 0) {
+            if (nextStartIndex === 0 && maxEnd > 0) {
                 nextStartIndex = Math.min(maxEnd, history.length); // 防越界
-            } else if (chat.lastAutoJournalIndex !== undefined && !isNaN(parseInt(chat.lastAutoJournalIndex, 10))) {
+            } else if (nextStartIndex === 0 && chat.lastAutoJournalIndex !== undefined && !isNaN(parseInt(chat.lastAutoJournalIndex, 10))) {
                 nextStartIndex = Math.max(0, Math.min(parseInt(chat.lastAutoJournalIndex, 10), history.length));
             }
         }
@@ -347,12 +362,245 @@ function getCurrentSettingsAutoJournalElements(chatType) {
     };
 }
 
+let autoJournalVisualChatId = null;
+let autoJournalVisualChatType = null;
+let autoJournalVisualizationInitialized = false;
+let autoJournalVisualReturnFocus = null;
+
+function getAutoJournalVisualChat(chatId, chatType) {
+    return chatType === 'group'
+        ? db.groups.find(group => group.id === chatId)
+        : db.characters.find(character => character.id === chatId);
+}
+
+function getAutoJournalVisualState(chat, info) {
+    const active = typeof autoJournalActiveTasks !== 'undefined' && autoJournalActiveTasks.has(chat.id);
+    if (!chat.autoJournalEnabled) return { text: '未开启', className: '' };
+    if (active || chat.autoJournalState === 'running') return { text: '正在生成', className: 'is-running' };
+    if (chat.autoJournalState === 'failed') return { text: '需要处理', className: 'is-failed' };
+    if (info.completedBatchCount > 0) return { text: '等待处理', className: 'is-ready' };
+    if (info.unsummarizedCount === 0 && info.nextStartIndex > 0) return { text: '已到最新', className: 'is-ready' };
+    return { text: '正在累计', className: 'is-ready' };
+}
+
+function refreshAutoJournalVisualizationEntry(chat, chatType, info = null) {
+    const buttonId = chatType === 'group' ? 'setting-group-auto-journal-visual-btn' : 'setting-auto-journal-visual-btn';
+    const button = document.getElementById(buttonId);
+    if (!button || currentChatId !== chat.id || currentChatType !== chatType) return;
+
+    const cursorInfo = info || getAutoJournalCursorInfo(chat);
+    const state = getAutoJournalVisualState(chat, cursorInfo);
+    const progress = cursorInfo.completedBatchCount > 0
+        ? cursorInfo.interval
+        : (cursorInfo.unsummarizedCount % cursorInfo.interval);
+    const text = button.querySelector('.auto-journal-visual-entry-text');
+    if (text) {
+        text.textContent = state.className === 'is-failed'
+            ? '需要重试 · 查看'
+            : `${progress}/${cursorInfo.interval} · 查看`;
+    }
+    button.title = `${state.text}，打开自动总结进度`;
+}
+
+function createAutoJournalRangeItem({ state, rangeText, detail, failed = false, pending = false }) {
+    const item = document.createElement('div');
+    item.className = 'auto-journal-range-item';
+
+    const dot = document.createElement('span');
+    dot.className = `auto-journal-range-dot${failed ? ' is-failed' : (pending ? ' is-pending' : '')}`;
+    dot.setAttribute('aria-hidden', 'true');
+
+    const main = document.createElement('div');
+    main.className = 'auto-journal-range-main';
+    const name = document.createElement('div');
+    name.className = 'auto-journal-range-name';
+    name.textContent = rangeText;
+    const sub = document.createElement('div');
+    sub.className = 'auto-journal-range-detail';
+    sub.textContent = detail;
+    main.append(name, sub);
+
+    const stateEl = document.createElement('span');
+    stateEl.className = `auto-journal-range-state${failed ? ' is-failed' : ''}`;
+    stateEl.textContent = state;
+    item.append(dot, main, stateEl);
+    return item;
+}
+
+function renderAutoJournalVisualization(chat, chatType) {
+    if (!chat) return;
+    ensureAutoJournalState(chat);
+
+    const modal = document.getElementById('auto-journal-visual-modal');
+    if (!modal) return;
+
+    const info = getAutoJournalCursorInfo(chat);
+    const state = getAutoJournalVisualState(chat, info);
+    const completedBatchCount = info.completedBatchCount;
+    const batchProgress = completedBatchCount > 0 ? info.interval : (info.unsummarizedCount % info.interval);
+    const progressPercent = info.interval > 0 ? Math.min(100, Math.round((batchProgress / info.interval) * 100)) : 0;
+    const remaining = completedBatchCount > 0 ? 0 : Math.max(0, info.interval - batchProgress);
+
+    const status = document.getElementById('auto-journal-visual-status');
+    status.textContent = state.text;
+    status.className = `auto-journal-status-pill${state.className ? ` ${state.className}` : ''}`;
+
+    const progressLabel = document.getElementById('auto-journal-progress-label');
+    progressLabel.textContent = completedBatchCount > 0 ? '待处理完整范围' : '距下次自动总结';
+    document.getElementById('auto-journal-progress-value').textContent = completedBatchCount > 0
+        ? `${completedBatchCount} 个`
+        : `${batchProgress} / ${info.interval} 条`;
+
+    const progressTrack = document.getElementById('auto-journal-progress-track');
+    progressTrack.setAttribute('aria-valuenow', String(progressPercent));
+    document.getElementById('auto-journal-progress-fill').style.width = `${progressPercent}%`;
+    document.getElementById('auto-journal-progress-cursor').textContent = info.nextStartIndex > 0
+        ? `已总结至第 ${info.nextStartIndex} 条`
+        : '尚未生成自动总结';
+    document.getElementById('auto-journal-progress-remaining').textContent = completedBatchCount > 0
+        ? `${completedBatchCount} 个范围待处理`
+        : `还有 ${remaining} 条触发`;
+
+    const isRunning = state.className === 'is-running';
+    const latestButton = document.getElementById('auto-journal-visual-latest');
+    const retryButton = document.getElementById('auto-journal-visual-retry');
+    latestButton.disabled = isRunning || info.unsummarizedCount <= 0;
+    retryButton.disabled = isRunning || completedBatchCount <= 0;
+    retryButton.textContent = chat.autoJournalState === 'failed' ? '重试失败范围' : '补生成完整范围';
+
+    const list = document.getElementById('auto-journal-range-list');
+    list.replaceChildren();
+
+    if (info.unsummarizedCount > 0) {
+        const pendingEnd = completedBatchCount > 0
+            ? info.nextStartIndex + info.interval
+            : info.history.length;
+        list.appendChild(createAutoJournalRangeItem({
+            state: chat.autoJournalState === 'failed' ? '失败' : (completedBatchCount > 0 ? '待处理' : '累计中'),
+            rangeText: `第 ${info.nextStartIndex + 1}–${pendingEnd} 条`,
+            detail: chat.autoJournalState === 'failed'
+                ? '上次未完成，消息范围没有被跳过'
+                : (completedBatchCount > 0 ? `已达到每 ${info.interval} 条的总结间隔` : `当前累计 ${batchProgress} 条消息`),
+            failed: chat.autoJournalState === 'failed',
+            pending: chat.autoJournalState !== 'failed'
+        }));
+    }
+
+    const completedJournals = (chat.memoryJournals || [])
+        .filter(journal => journal
+            && journal.range
+            && Number.isFinite(Number(journal.range.start))
+            && Number.isFinite(Number(journal.range.end))
+            && !journal.isNodeSummary)
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+        .slice(0, 5);
+    completedJournals.forEach(journal => {
+        list.appendChild(createAutoJournalRangeItem({
+            state: '已总结',
+            rangeText: `第 ${journal.range.start}–${journal.range.end} 条`,
+            detail: journal.title || '自动总结'
+        }));
+    });
+
+    if (!list.children.length) {
+        const empty = document.createElement('div');
+        empty.className = 'auto-journal-range-empty';
+        empty.textContent = '还没有自动总结记录';
+        list.appendChild(empty);
+    }
+
+    refreshAutoJournalVisualizationEntry(chat, chatType, info);
+}
+
+function closeAutoJournalVisualization() {
+    const modal = document.getElementById('auto-journal-visual-modal');
+    if (!modal) return;
+    modal.classList.remove('visible');
+    modal.setAttribute('aria-hidden', 'true');
+    autoJournalVisualChatId = null;
+    autoJournalVisualChatType = null;
+    if (autoJournalVisualReturnFocus && autoJournalVisualReturnFocus.isConnected) {
+        autoJournalVisualReturnFocus.focus();
+    }
+    autoJournalVisualReturnFocus = null;
+}
+
+function openAutoJournalVisualization(chat, chatType) {
+    const modal = document.getElementById('auto-journal-visual-modal');
+    if (!modal || !chat) return;
+    autoJournalVisualReturnFocus = document.activeElement;
+    autoJournalVisualChatId = chat.id;
+    autoJournalVisualChatType = chatType;
+    renderAutoJournalVisualization(chat, chatType);
+    modal.classList.add('visible');
+    modal.setAttribute('aria-hidden', 'false');
+    const closeButton = document.getElementById('auto-journal-visual-close');
+    if (closeButton) closeButton.focus();
+}
+
+async function runAutoJournalVisualAction(action) {
+    const chat = getAutoJournalVisualChat(autoJournalVisualChatId, autoJournalVisualChatType);
+    if (!chat) {
+        closeAutoJournalVisualization();
+        return;
+    }
+
+    if (action === 'retry') {
+        await retryAutoJournalForChat(chat, { chatType: autoJournalVisualChatType });
+    } else if (action === 'latest') {
+        const info = getAutoJournalCursorInfo(chat);
+        if (info.unsummarizedCount <= 0) return;
+        const choice = await askSummarizeLatestOptions(info);
+        if (!choice) return;
+        await summarizeUntilLatest(chat, {
+            chatType: autoJournalVisualChatType,
+            mode: choice.mode,
+            splitSize: choice.splitSize,
+            includeRemainder: choice.includeRemainder
+        });
+    }
+
+    renderAutoJournalVisualization(chat, autoJournalVisualChatType);
+}
+
+function setupAutoJournalVisualization() {
+    if (autoJournalVisualizationInitialized) return;
+    const modal = document.getElementById('auto-journal-visual-modal');
+    if (!modal) return;
+    autoJournalVisualizationInitialized = true;
+
+    document.querySelectorAll('[data-auto-journal-chat-type]').forEach(button => {
+        button.addEventListener('click', () => {
+            const chatType = button.dataset.autoJournalChatType;
+            const chat = getAutoJournalVisualChat(currentChatId, chatType);
+            openAutoJournalVisualization(chat, chatType);
+        });
+    });
+
+    document.getElementById('auto-journal-visual-close').addEventListener('click', closeAutoJournalVisualization);
+    document.getElementById('auto-journal-visual-latest').addEventListener('click', () => runAutoJournalVisualAction('latest'));
+    document.getElementById('auto-journal-visual-retry').addEventListener('click', () => runAutoJournalVisualAction('retry'));
+    modal.addEventListener('click', event => {
+        if (event.target === modal) closeAutoJournalVisualization();
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && modal.classList.contains('visible')) {
+            closeAutoJournalVisualization();
+        }
+    });
+}
+
 function refreshAutoJournalButton(chat, chatType = null) {
     if (!chat) return;
 
     ensureAutoJournalState(chat);
 
     const resolvedChatType = chatType || getAutoJournalChatType(chat);
+    refreshAutoJournalVisualizationEntry(chat, resolvedChatType);
+    if (autoJournalVisualChatId === chat.id && autoJournalVisualChatType === resolvedChatType) {
+        renderAutoJournalVisualization(chat, resolvedChatType);
+    }
+    if (typeof currentChatId !== 'undefined' && (currentChatId !== chat.id || currentChatType !== resolvedChatType)) return;
     const { retryButton, latestButton } = getCurrentSettingsAutoJournalElements(resolvedChatType);
     if (!retryButton && !latestButton) return;
 
@@ -376,6 +624,104 @@ function refreshAutoJournalButton(chat, chatType = null) {
     if (latestButton) {
         latestButton.disabled = isRunning;
         latestButton.textContent = isRunning ? '总结进行中...' : '总结到最新';
+    }
+}
+
+async function saveAutoJournalChatStrict(chat, chatType) {
+    if (typeof dexieDB === 'undefined' || !dexieDB) {
+        throw new Error('本地数据库尚未初始化，无法保存自动总结。');
+    }
+
+    const table = chatType === 'private' ? dexieDB.characters : dexieDB.groups;
+    if (!table || typeof table.put !== 'function') {
+        throw new Error('找不到自动总结对应的本地数据表。');
+    }
+
+    await table.put(chat);
+}
+
+async function commitAutoJournalBatch(chat, chatType, generationResult) {
+    const journal = generationResult && generationResult.journal;
+    const endMessage = generationResult && generationResult.rangeEndMessage;
+    const expectedMessageIds = generationResult && generationResult.rangeMessageIds;
+    const expectedMessageSignature = generationResult && generationResult.rangeMessageSignature;
+    if (!journal || !endMessage || !endMessage.id) {
+        throw new Error('自动总结缺少有效的范围边界，未写入总结。');
+    }
+
+    const liveEndMessage = (chat.history || []).find(message => message.id === endMessage.id);
+    if (!liveEndMessage) {
+        throw new Error('总结期间消息范围发生了变化，请重试该范围。');
+    }
+
+    if (Array.isArray(expectedMessageIds) && expectedMessageIds.length > 0) {
+        const liveStartIndex = (chat.history || []).findIndex(message => message.id === expectedMessageIds[0]);
+        const liveEndIndex = (chat.history || []).findIndex(message => message.id === expectedMessageIds[expectedMessageIds.length - 1]);
+        const liveMessageIds = liveStartIndex !== -1 && liveEndIndex >= liveStartIndex
+            ? chat.history.slice(liveStartIndex, liveEndIndex + 1).map(message => message && message.id).filter(Boolean)
+            : [];
+        if (liveMessageIds.length !== expectedMessageIds.length
+            || liveMessageIds.some((messageId, index) => messageId !== expectedMessageIds[index])) {
+            throw new Error('总结期间消息范围发生了变化，请重试该范围。');
+        }
+        if (expectedMessageSignature) {
+            const liveMessageSignature = JSON.stringify(chat.history.slice(liveStartIndex, liveEndIndex + 1).map(message => ({
+                id: message && message.id,
+                role: message && message.role,
+                content: message && message.content,
+                parts: message && message.parts,
+                timestamp: message && message.timestamp
+            })));
+            if (liveMessageSignature !== expectedMessageSignature) {
+                throw new Error('总结期间消息内容发生了变化，请重试该范围。');
+            }
+        }
+    }
+
+    if (!Array.isArray(chat.memoryJournals)) chat.memoryJournals = [];
+    const jobKey = `${chat.id}:${journal.range.startMessageId || journal.range.start}:${journal.range.endMessageId || journal.range.end}`;
+    const existing = chat.memoryJournals.find(item => item.autoJournalJobKey === jobKey);
+    if (existing) {
+        const duplicateSnapshot = {
+            lastSummarizedMsgId: chat.lastSummarizedMsgId,
+            lastSummarizedMsgTimestamp: chat.lastSummarizedMsgTimestamp,
+            lastAutoJournalIndex: chat.lastAutoJournalIndex,
+            autoJournalState: chat.autoJournalState,
+            autoJournalPending: chat.autoJournalPending
+        };
+        setAutoJournalCursorByMessage(chat, liveEndMessage);
+        chat.lastAutoJournalIndex = (chat.history || []).findIndex(message => message.id === liveEndMessage.id) + 1;
+        chat.autoJournalPending = false;
+        try {
+            await saveAutoJournalChatStrict(chat, chatType);
+            return existing;
+        } catch (error) {
+            Object.assign(chat, duplicateSnapshot);
+            throw error;
+        }
+    }
+
+    const snapshot = {
+        lastSummarizedMsgId: chat.lastSummarizedMsgId,
+        lastSummarizedMsgTimestamp: chat.lastSummarizedMsgTimestamp,
+        lastAutoJournalIndex: chat.lastAutoJournalIndex,
+        autoJournalState: chat.autoJournalState,
+        autoJournalPending: chat.autoJournalPending
+    };
+
+    journal.autoJournalJobKey = jobKey;
+    chat.memoryJournals.push(journal);
+    setAutoJournalCursorByMessage(chat, liveEndMessage);
+    chat.lastAutoJournalIndex = (chat.history || []).findIndex(message => message.id === liveEndMessage.id) + 1;
+    chat.autoJournalPending = false;
+
+    try {
+        await saveAutoJournalChatStrict(chat, chatType);
+        return journal;
+    } catch (error) {
+        chat.memoryJournals = chat.memoryJournals.filter(item => item !== journal);
+        Object.assign(chat, snapshot);
+        throw error;
     }
 }
 
@@ -414,6 +760,10 @@ async function processAutoJournal(chat, options = {}) {
 
     ensureAutoJournalState(chat);
 
+    if (typeof autoJournalActiveTasks !== 'undefined' && autoJournalActiveTasks.has(chat.id)) {
+        return { status: 'running', generatedCount: 0 };
+    }
+
     if (!options.force && !chat.autoJournalEnabled) {
         refreshAutoJournalButton(chat, options.chatType);
         return { status: 'disabled', generatedCount: 0 };
@@ -441,24 +791,22 @@ async function processAutoJournal(chat, options = {}) {
         return { status: 'noop', generatedCount: 0 };
     }
 
-    const savedChatId = currentChatId;
-    const savedChatType = currentChatType;
     const targetChatType = options.chatType || getAutoJournalChatType(chat);
     let generatedCount = 0;
+    const taskToken = Symbol(chat.id);
+
+    autoJournalActiveTasks.set(chat.id, taskToken);
 
     chat.autoJournalState = 'running';
     chat.autoJournalPending = false;
     refreshAutoJournalButton(chat, targetChatType);
-
-    currentChatId = chat.id;
-    currentChatType = targetChatType;
 
     try {
         do {
             const currentRange = getNextAutoJournalRange(chat);
             if (!currentRange) break;
 
-            await generateJournal(
+            const generationResult = await generateJournal(
                 currentRange.start,
                 currentRange.end,
                 !!chat.journalIncludeFavorited,
@@ -467,19 +815,26 @@ async function processAutoJournal(chat, options = {}) {
                 {
                     isAutoJournal: true,
                     propagateError: true,
-                    suppressSuccessToast: true
+                    suppressSuccessToast: true,
+                    deferCommit: true,
+                    targetChatId: chat.id,
+                    targetChatType
                 }
             );
 
-            setAutoJournalCursorByEndIndex(chat, currentRange.end);
+            await commitAutoJournalBatch(chat, targetChatType, generationResult);
             generatedCount++;
-            await saveData();
+            if (!options.force && !chat.autoJournalEnabled) break;
         } while (options.processAllAvailable && getNextAutoJournalRange(chat));
 
         chat.autoJournalState = 'idle';
         chat.autoJournalPending = false;
-        await saveData();
+        await saveAutoJournalChatStrict(chat, targetChatType);
         refreshAutoJournalButton(chat, targetChatType);
+
+        if (currentChatId === chat.id && currentChatType === targetChatType && typeof renderJournalList === 'function') {
+            renderJournalList();
+        }
 
         if (options.showSuccessToast && generatedCount > 0) {
             showToast(generatedCount > 1 ? `已补生成 ${generatedCount} 篇自动总结` : '自动总结已补生成');
@@ -490,7 +845,11 @@ async function processAutoJournal(chat, options = {}) {
         console.error('自动总结失败:', error);
         chat.autoJournalState = 'failed';
         chat.autoJournalPending = false;
-        await saveData();
+        try {
+            await saveAutoJournalChatStrict(chat, targetChatType);
+        } catch (saveError) {
+            console.error('保存自动总结失败状态时出错:', saveError);
+        }
         refreshAutoJournalButton(chat, targetChatType);
         
         // 高调报错：弹窗显示失败原因
@@ -498,7 +857,7 @@ async function processAutoJournal(chat, options = {}) {
         if (typeof showAppConfirmDialog === 'function') {
             showAppConfirmDialog({
                 title: '自动总结失败',
-                message: `API 报错：\n${errorMsg}\n\n当前进度已暂停。当您继续发送消息，累计达到下一个间隔时系统将自动重试；您也可以随时在设置中手动触发。`,
+                message: `自动总结未完成：\n${errorMsg}\n\n失败范围没有被标记为已总结。下次聊天回复完成后系统会重试；您也可以随时在设置中手动触发。`,
                 confirmText: '确定',
                 cancelText: '' // 隐藏取消按钮
             }).catch(() => {});
@@ -508,8 +867,9 @@ async function processAutoJournal(chat, options = {}) {
         
         return { status: 'failed', generatedCount, error };
     } finally {
-        currentChatId = savedChatId;
-        currentChatType = savedChatType;
+        if (autoJournalActiveTasks.get(chat.id) === taskToken) {
+            autoJournalActiveTasks.delete(chat.id);
+        }
     }
 }
 
@@ -521,9 +881,6 @@ async function applyAutoJournalToggleDecision(chat, enabled, options = {}) {
 
     if (!enabled) {
         chat.autoJournalPending = false;
-        if (chat.autoJournalState === 'running') {
-            chat.autoJournalState = 'idle';
-        }
         refreshAutoJournalButton(chat, options.chatType);
         return { status: 'disabled' };
     }
@@ -583,6 +940,9 @@ async function retryAutoJournalForChat(chat, options = {}) {
     if (!chat) return { status: 'noop' };
 
     ensureAutoJournalState(chat);
+    if (typeof autoJournalActiveTasks !== 'undefined' && autoJournalActiveTasks.has(chat.id)) {
+        return { status: 'running', generatedCount: 0 };
+    }
     chat.autoJournalState = 'idle';
 
     return processAutoJournal(chat, {
@@ -600,7 +960,9 @@ async function summarizeUntilLatest(chat, options = {}) {
 
     ensureAutoJournalState(chat);
 
-    if (chat.autoJournalState === 'running' || (typeof isGenerating !== 'undefined' && isGenerating)) {
+    if (chat.autoJournalState === 'running'
+        || (typeof autoJournalActiveTasks !== 'undefined' && autoJournalActiveTasks.has(chat.id))
+        || (typeof isGenerating !== 'undefined' && isGenerating)) {
         showToast('正在总结中，请稍候...');
         return { status: 'running', generatedCount: 0 };
     }
@@ -620,17 +982,15 @@ async function summarizeUntilLatest(chat, options = {}) {
     const remainderCount = Math.max(0, info.unsummarizedCount - (completedBatchCount * splitSize));
     const includeRemainder = remainderCount > 0 ? options.includeRemainder !== false : true;
     const targetChatType = options.chatType || getAutoJournalChatType(chat);
-    const savedChatId = currentChatId;
-    const savedChatType = currentChatType;
     let generatedCount = 0;
     let finalCursorEnd = null;
+    const taskToken = Symbol(chat.id);
+
+    autoJournalActiveTasks.set(chat.id, taskToken);
 
     chat.autoJournalState = 'running';
     chat.autoJournalPending = false;
     refreshAutoJournalButton(chat, targetChatType);
-
-    currentChatId = chat.id;
-    currentChatType = targetChatType;
 
     try {
         if (mode === 'split') {
@@ -647,7 +1007,7 @@ async function summarizeUntilLatest(chat, options = {}) {
             let cursor = start;
             while (cursor <= limit) {
                 const batchEnd = Math.min(cursor + splitSize - 1, limit);
-                await generateJournal(
+                const generationResult = await generateJournal(
                     cursor,
                     batchEnd,
                     !!chat.journalIncludeFavorited,
@@ -656,18 +1016,20 @@ async function summarizeUntilLatest(chat, options = {}) {
                     {
                         isAutoJournal: true,
                         propagateError: true,
-                        suppressSuccessToast: true
+                        suppressSuccessToast: true,
+                        deferCommit: true,
+                        targetChatId: chat.id,
+                        targetChatType
                     }
                 );
 
-                setAutoJournalCursorByEndIndex(chat, batchEnd);
+                await commitAutoJournalBatch(chat, targetChatType, generationResult);
                 finalCursorEnd = batchEnd;
                 generatedCount++;
-                await saveData();
                 cursor = batchEnd + 1;
             }
         } else {
-            await generateJournal(
+            const generationResult = await generateJournal(
                 start,
                 end,
                 !!chat.journalIncludeFavorited,
@@ -676,19 +1038,26 @@ async function summarizeUntilLatest(chat, options = {}) {
                 {
                     isAutoJournal: true,
                     propagateError: true,
-                    suppressSuccessToast: true
+                    suppressSuccessToast: true,
+                    deferCommit: true,
+                    targetChatId: chat.id,
+                    targetChatType
                 }
             );
 
-            setAutoJournalCursorByEndIndex(chat, end);
+            await commitAutoJournalBatch(chat, targetChatType, generationResult);
             finalCursorEnd = end;
             generatedCount = 1;
         }
 
         chat.autoJournalState = 'idle';
         chat.autoJournalPending = false;
-        await saveData();
+        await saveAutoJournalChatStrict(chat, targetChatType);
         refreshAutoJournalButton(chat, targetChatType);
+
+        if (currentChatId === chat.id && currentChatType === targetChatType && typeof renderJournalList === 'function') {
+            renderJournalList();
+        }
 
         if (mode === 'split') {
             const remainingCount = Math.max(0, end - (finalCursorEnd || 0));
@@ -706,13 +1075,18 @@ async function summarizeUntilLatest(chat, options = {}) {
         console.error('总结到最新失败:', error);
         chat.autoJournalState = 'idle';
         chat.autoJournalPending = false;
-        await saveData();
+        try {
+            await saveAutoJournalChatStrict(chat, targetChatType);
+        } catch (saveError) {
+            console.error('保存总结到最新失败状态时出错:', saveError);
+        }
         refreshAutoJournalButton(chat, targetChatType);
         showApiError(error);
         return { status: 'failed', generatedCount, error };
     } finally {
-        currentChatId = savedChatId;
-        currentChatType = savedChatType;
+        if (autoJournalActiveTasks.get(chat.id) === taskToken) {
+            autoJournalActiveTasks.delete(chat.id);
+        }
     }
 }
 

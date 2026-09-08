@@ -927,6 +927,7 @@ function loadSettingsToSidebar() {
         if (typeof populateStatusBarPresetSelect === 'function') {
             populateStatusBarPresetSelect();
         }
+        if (window.McpManager) window.McpManager.renderPermissionEditor(document.getElementById('chat-mcp-settings'), e);
     }
 }
 

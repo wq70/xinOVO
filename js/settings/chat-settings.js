@@ -2287,6 +2287,7 @@ function loadSettingsToSidebar() {
         if (typeof populateStatusBarPresetSelect === 'function') {
             populateStatusBarPresetSelect();
         }
+        if (window.McpManager) window.McpManager.renderPermissionEditor(document.getElementById('chat-mcp-settings'), e);
     }
 }
 
@@ -2643,6 +2644,7 @@ async function saveSettingsFromSidebar() {
         if (phoneControlViewLimitInput) e.phoneControlViewLimit = Math.min(50, Math.max(5, parseInt(phoneControlViewLimitInput.value, 10) || 10));
         const phoneControlCharFilterCheckbox = document.getElementById('setting-phone-control-char-filter-enabled');
         if (phoneControlCharFilterCheckbox) e.phoneControlCharFilterEnabled = phoneControlCharFilterCheckbox.checked;
+        if (window.McpManager && document.getElementById('chat-mcp-settings')) e.mcpSettings = window.McpManager.readPermissionEditor(document.getElementById('chat-mcp-settings'));
         // phoneControlVisibleCharIds 的保存将在弹窗确认时直接操作 db 并触发 saveData，这里无需额外处理，只需保持状态同步
 
         await saveData();

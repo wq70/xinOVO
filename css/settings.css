@@ -1,7 +1,17 @@
 /* --- 设置与个人资料样式 --- */
 
-#chat-settings-screen, #group-settings-screen, #customize-screen {
+#chat-settings-screen {
+    background-color: #ffffff;
+}
+
+#group-settings-screen, #customize-screen {
     background-color: #f2f2f2;
+}
+
+/* 聊天设置使用白色底时，以轻边框和阴影保留分组层次。 */
+#chat-settings-screen .kkt-group {
+    border: 1px solid #edf0f3;
+    box-shadow: 0 2px 10px rgba(30, 41, 59, 0.05);
 }
 
 #chat-settings-screen .content, #group-settings-screen .content, #customize-screen .content {
@@ -51,6 +61,10 @@
     background-color: #fff;
     border-radius: 12px;
     overflow: hidden;
+}
+
+.kkt-group + .kkt-group {
+    margin-top: 15px;
 }
 
 /* 列表项 */
@@ -114,6 +128,327 @@
     font-size: 12px;
     color: #ccc;
     margin-left: 5px;
+}
+
+/* 自动总结可视化：延续设置页的紧凑行与次要按钮语言。 */
+.auto-journal-visual-entry {
+    min-width: 132px;
+    max-width: 152px;
+    margin: 0;
+    overflow: hidden;
+}
+
+.auto-journal-visual-entry-text {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.auto-journal-visual-window {
+    width: min(90%, 360px);
+    max-width: 360px;
+    max-height: calc(100% - 32px);
+    padding: 15px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.auto-journal-visual-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+    margin-bottom: 13px;
+}
+
+.auto-journal-visual-heading-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.auto-journal-visual-window .auto-journal-visual-header h3 {
+    min-width: 0;
+    margin: 0;
+    color: #333;
+    font-size: calc(16px * var(--app-font-scale));
+    font-weight: 500;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.auto-journal-status-pill {
+    flex: 0 0 auto;
+    max-width: 86px;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: #eef2f2;
+    color: #697578;
+    font-size: calc(11px * var(--app-font-scale));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.auto-journal-status-pill.is-running,
+.auto-journal-status-pill.is-ready {
+    background: #e8f0ed;
+    color: #587068;
+}
+
+.auto-journal-status-pill.is-failed {
+    background: #fff0f0;
+    color: #b55454;
+}
+
+.auto-journal-progress-summary {
+    padding: 12px;
+    border-radius: 11px;
+    background: #f5f7f7;
+}
+
+.auto-journal-progress-line,
+.auto-journal-progress-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+}
+
+.auto-journal-progress-line {
+    color: #3d4346;
+    font-size: calc(13px * var(--app-font-scale));
+}
+
+.auto-journal-progress-value {
+    flex: 0 0 auto;
+    color: #687175;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.auto-journal-progress-track {
+    height: 7px;
+    margin: 10px 0 8px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: #e4e9e9;
+}
+
+.auto-journal-progress-fill {
+    width: 0;
+    height: 100%;
+    border-radius: inherit;
+    background: #9eb6ae;
+    transition: width 0.2s ease;
+}
+
+.auto-journal-progress-meta {
+    color: #858d90;
+    font-size: calc(11px * var(--app-font-scale));
+}
+
+.auto-journal-progress-meta span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.auto-journal-progress-meta span:last-child {
+    flex: 0 0 auto;
+}
+
+.auto-journal-visual-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.auto-journal-visual-actions .btn {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding-left: 8px;
+    padding-right: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.auto-journal-range-section {
+    min-height: 0;
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+}
+
+.auto-journal-range-title {
+    margin-bottom: 4px;
+    color: #444;
+    font-size: calc(13px * var(--app-font-scale));
+    font-weight: 500;
+}
+
+.auto-journal-range-list {
+    min-height: 58px;
+    max-height: 220px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.auto-journal-range-item {
+    display: grid;
+    grid-template-columns: 10px minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 8px;
+    padding: 10px 0;
+    border-bottom: 1px solid #f0f1f2;
+}
+
+.auto-journal-range-item:last-child {
+    border-bottom: none;
+}
+
+.auto-journal-range-dot {
+    width: 8px;
+    height: 8px;
+    margin-top: 5px;
+    border-radius: 50%;
+    background: #9eb6ae;
+}
+
+.auto-journal-range-dot.is-pending {
+    background: #c5cbcd;
+}
+
+.auto-journal-range-dot.is-failed {
+    background: #cf8585;
+}
+
+.auto-journal-range-main {
+    min-width: 0;
+}
+
+.auto-journal-range-name {
+    color: #444;
+    font-size: calc(13px * var(--app-font-scale));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.auto-journal-range-detail,
+.auto-journal-range-state,
+.auto-journal-range-empty {
+    color: #8a9194;
+    font-size: calc(11px * var(--app-font-scale));
+}
+
+.auto-journal-range-detail {
+    margin-top: 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.auto-journal-range-state {
+    padding-top: 2px;
+    white-space: nowrap;
+}
+
+.auto-journal-range-state.is-failed {
+    color: #b55454;
+}
+
+.auto-journal-range-empty {
+    padding: 20px 4px;
+    text-align: center;
+}
+
+body.night-mode-active .auto-journal-visual-window .auto-journal-visual-header h3,
+body.night-mode-active .auto-journal-range-title,
+body.night-mode-active .auto-journal-range-name,
+body.night-mode-active .auto-journal-progress-line {
+    color: #e6e9ea;
+}
+
+body.night-mode-active .auto-journal-status-pill {
+    background: rgba(255, 255, 255, 0.08);
+    color: #c2c9cb;
+}
+
+body.night-mode-active .auto-journal-status-pill.is-running,
+body.night-mode-active .auto-journal-status-pill.is-ready {
+    background: rgba(130, 175, 160, 0.18);
+    color: #b4d0c7;
+}
+
+body.night-mode-active .auto-journal-status-pill.is-failed {
+    background: rgba(220, 110, 110, 0.16);
+    color: #f0abab;
+}
+
+body.night-mode-active .auto-journal-progress-summary {
+    background: rgba(255, 255, 255, 0.055);
+}
+
+body.night-mode-active .auto-journal-progress-track {
+    background: rgba(255, 255, 255, 0.10);
+}
+
+body.night-mode-active .auto-journal-progress-fill {
+    background: #86a99e;
+}
+
+body.night-mode-active .auto-journal-progress-value,
+body.night-mode-active .auto-journal-progress-meta,
+body.night-mode-active .auto-journal-range-detail,
+body.night-mode-active .auto-journal-range-state,
+body.night-mode-active .auto-journal-range-empty {
+    color: #a9b0b2;
+}
+
+body.night-mode-active .auto-journal-range-item {
+    border-bottom-color: rgba(255, 255, 255, 0.07);
+}
+
+@media (max-width: 340px) {
+    .auto-journal-visual-window {
+        width: calc(100% - 20px);
+        padding: 12px;
+    }
+
+    .auto-journal-visual-header {
+        gap: 7px;
+    }
+
+    .auto-journal-visual-heading-wrap {
+        gap: 5px;
+    }
+
+    .auto-journal-status-pill {
+        max-width: 70px;
+    }
+
+    .auto-journal-progress-meta {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .auto-journal-progress-meta span:last-child {
+        flex: 1 1 auto;
+    }
 }
 
 /* 开关样式 */

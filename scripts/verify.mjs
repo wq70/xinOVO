@@ -133,20 +133,21 @@ if (retainedLegacyTagErrors.length > 1) {
 }
 
 const logicalInfo = collectDocumentInfo(logicalDocument);
-const protectedDomSignature = '588226efcaddda46a0861ab55587a832f3fdcec80779b0fb43871e0169e5aaca';
-if (getNonScriptDomSignature(logicalDocument) !== protectedDomSignature) {
-    fail('Assembled non-script DOM differs from the protected pre-split structure');
+const protectedDomSignature = 'ff58858fc64f42da1b695576f09915b5208caf2ecf4d01523056591dce2da0af';
+const actualDomSignature = getNonScriptDomSignature(logicalDocument);
+if (actualDomSignature !== protectedDomSignature) {
+    fail(`Assembled non-script DOM differs from the protected pre-split structure: ${actualDomSignature}`);
 }
 const textualIds = [...logicalHtml.matchAll(/\bid\s*=\s*["']([^"']+)["']/gi)].map(match => match[1]);
 const duplicateIds = [...new Set(textualIds.filter((id, index) => textualIds.indexOf(id) !== index))];
-if (textualIds.length !== 2075) fail(`Expected 2075 assembled IDs, found ${textualIds.length}`);
+if (textualIds.length !== 2087) fail(`Expected 2087 assembled IDs, found ${textualIds.length}`);
 if (duplicateIds.length) fail(`Duplicate assembled IDs: ${duplicateIds.join(', ')}`);
 
 const requiredIds = [
     'home-screen', 'chat-list-screen', 'contacts-screen', 'chat-room-screen',
     'api-settings-screen', 'chat-settings-screen', 'group-settings-screen',
     'memory-table-screen', 'forum-screen', 'peek-screen', 'node-system-screen',
-    'storage-screen',
+    'storage-screen', 'mcp-screen', 'mcp-panel', 'mcp-sheet', 'mcp-import-input',
 ];
 for (const id of requiredIds) {
     if (!logicalInfo.ids.includes(id)) fail(`Required assembled UI element is missing: #${id}`);

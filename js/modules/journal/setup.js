@@ -2,8 +2,13 @@
 
 let generatingChatId = null;
 const autoJournalRetryTimers = {};
+const autoJournalActiveTasks = new Map();
 
 function setupMemoryJournalScreen() {
+    if (typeof setupAutoJournalVisualization === 'function') {
+        setupAutoJournalVisualization();
+    }
+
     const journalTitleBtn = document.getElementById('journal-title-btn');
     const journalTitleActionsheet = document.getElementById('journal-title-actionsheet');
     const journalTitleCancelBtn = document.getElementById('journal-title-cancel-btn');
@@ -460,35 +465,17 @@ function setupMemoryJournalScreen() {
         generatingChatId = currentChatId;
 
         try {
-            let { url, key, model } = db.apiSettings;
-            if (!url || !key || !model) {
-                throw new Error("API设置不完整。");
-            }
-
-            if (url.endsWith('/')) {
-                url = url.slice(0, -1);
-            }
-
-            const requestBody = {
-                model: model,
-                messages: [{ role: 'user', content: summaryPrompt }],
-                temperature: 0.7
-            };
-            const endpoint = `${url}/v1/chat/completions`;
-            const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` };
-
-            const rawContent = await fetchAiResponse(db.apiSettings, requestBody, headers, endpoint);
-
-            const titleMatch = rawContent.match(/<title>([\s\S]*?)<\/title>/i);
-            const contentMatch = rawContent.match(/<content>([\s\S]*?)<\/content>/i);
-
-            const journalData = {
-                title: titleMatch ? titleMatch[1].trim() : "合并日记",
-                content: contentMatch ? contentMatch[1].trim() : "内容提取失败。"
-            };
+            const apiConfig = db.summaryApiSettings
+                && db.summaryApiSettings.url
+                && db.summaryApiSettings.key
+                && db.summaryApiSettings.model
+                ? db.summaryApiSettings
+                : db.apiSettings;
+            const rawContent = await requestJournalSummary(apiConfig, summaryPrompt);
+            const journalData = parseJournalResponse(rawContent);
 
             const newJournal = {
-                id: `journal_${Date.now()}`,
+                id: `journal_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
                 range: { start: mergedStart, end: mergedEnd },
                 title: journalData.title,
                 content: journalData.content,
@@ -732,4 +719,3 @@ function setupMemoryJournalScreen() {
         renderJournalList();
     });
 }
-

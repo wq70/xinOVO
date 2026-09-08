@@ -22,10 +22,11 @@ export const phoneHtmlChunks = [
     ['21-video-call', ['html/screens/video-call.html']],
     ['22-lifestyle', ['html/screens/lifestyle.html']],
     ['23-node-system', ['html/screens/node-system.html']],
+    ['24-mcp', ['html/screens/mcp.html']],
 ];
 
 export const bodyHtmlChunks = [
-    ['24-global-modals', ['html/modals/global-modals.html']],
+    ['25-global-modals', ['html/modals/global-modals.html']],
 ];
 
 export function renderChunkScript(bucket, html) {

@@ -151,6 +151,8 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
         
         // 使用工具函数进行过滤（包含深度克隆、屏蔽过滤、双语修正、状态栏剔除）
         historySlice = filterHistoryForAI(chat, historySlice);
+        // MCP 状态卡只供用户查看，所有模型供应商都不得把它当作聊天上下文。
+        historySlice = historySlice.filter(m => !m.excludeFromContext && m.type !== 'mcp_activity');
         // 【新增】过滤掉不应进入上下文的消息（如思考过程、被撤回的消息标记等）
         historySlice = historySlice.filter(m => !m.isContextDisabled);
         
@@ -620,6 +622,73 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                 }
             }
         }
+        }
+        if (!isBackground && !isSummary && window.McpChatOrchestrator && window.mcpManager) {
+            const latestMcpUserMessage = [...(chat.history || [])].reverse().find(message => message && message.role === 'user' && !message.excludeFromContext);
+            const mcpCatalog = window.McpChatOrchestrator.createCatalog(chat, latestMcpUserMessage);
+            if (mcpCatalog.length) {
+                const signal = currentReplyAbortController ? currentReplyAbortController.signal : undefined;
+                const initialMessages = provider === 'gemini' ? [...(requestBody.contents || [])] : [...(requestBody.messages || [])];
+                const sendToolAwareRequest = async input => {
+                    let toolRequestBody;
+                    let toolEndpoint;
+                    if (provider === 'gemini') {
+                        const contents = input.messages.map(message => {
+                            if (message && Array.isArray(message.parts)) return message;
+                            if (message && message.role === 'tool') {
+                                let responseValue;
+                                try { responseValue = JSON.parse(message.content || '{}'); } catch (error) { responseValue = { result: String(message.content || '') }; }
+                                return { role: 'user', parts: [{ functionResponse: { name: message.name, response: responseValue } }] };
+                            }
+                            return { role: message.role === 'assistant' ? 'model' : 'user', parts: [{ text: typeof message.content === 'string' ? message.content : JSON.stringify(message.content || '') }] };
+                        });
+                        const functionDeclarations = (input.tools || []).map(tool => tool.function).filter(Boolean).map(fn => ({ name: fn.name, description: fn.description, parameters: fn.parameters }));
+                        const nativeTools = (requestBody.tools || []).filter(tool => !tool.functionDeclarations);
+                        toolRequestBody = {
+                            ...requestBody,
+                            contents,
+                            tools: functionDeclarations.length ? [...nativeTools, { functionDeclarations }] : nativeTools,
+                            generationConfig: { ...(requestBody.generationConfig || {}) },
+                            ...(input.requireTool && functionDeclarations.length ? { toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: functionDeclarations.map(item => item.name) } } } : {})
+                        };
+                        toolEndpoint = `${url}/v1beta/models/${model}:generateContent?key=${getRandomValue(key)}`;
+                    } else {
+                        toolRequestBody = {
+                            ...requestBody,
+                            messages: input.messages,
+                            stream: false,
+                            ...(input.tools && input.tools.length ? { tools: input.tools, tool_choice: input.forceFinal ? 'none' : input.requireTool ? 'required' : 'auto' } : { tools: undefined, tool_choice: undefined })
+                        };
+                        toolEndpoint = `${url}/v1/chat/completions`;
+                    }
+                    const toolResponse = await fetch(toolEndpoint, {
+                        method: 'POST',
+                        headers: provider === 'gemini' ? { 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+                        body: JSON.stringify(toolRequestBody),
+                        signal
+                    });
+                    if (!toolResponse.ok) throw new Error(`MCP 工具回合 API 错误：${toolResponse.status} ${(await toolResponse.text()).slice(0, 300)}`);
+                    const payload = await toolResponse.json();
+                    if (provider === 'gemini') {
+                        const assistantMessage = payload.candidates?.[0]?.content || { role: 'model', parts: [] };
+                        const parts = assistantMessage.parts || [];
+                        return {
+                            text: parts.filter(part => part && part.text).map(part => part.text).join(''),
+                            assistantMessage,
+                            toolCalls: parts.filter(part => part && part.functionCall).map((part, index) => ({ id: `gemini_${Date.now()}_${index}`, name: part.functionCall.name, arguments: part.functionCall.args || {} }))
+                        };
+                    }
+                    const assistantMessage = payload.choices?.[0]?.message || {};
+                    return {
+                        text: typeof assistantMessage.content === 'string' ? assistantMessage.content : '',
+                        assistantMessage,
+                        toolCalls: (assistantMessage.tool_calls || []).map(call => ({ id: call.id, name: call.function && call.function.name, arguments: call.function && call.function.arguments }))
+                    };
+                };
+                const mcpResponse = await window.McpChatOrchestrator.run({ chat, messages: initialMessages, signal, send: sendToolAwareRequest });
+                await handleAiReplyContent(mcpResponse || '', chat, chatId, chatType, isBackground, isCharBlockedMonologue);
+                return;
+            }
         }
         console.log('[DEBUG] AutoReply Request Body:', JSON.stringify(requestBody));
         const endpoint = (provider === 'gemini') ? `${url}/v1beta/models/${model}:streamGenerateContent?key=${getRandomValue(key)}` : `${url}/v1/chat/completions`;
