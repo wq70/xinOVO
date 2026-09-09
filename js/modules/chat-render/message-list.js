@@ -40,18 +40,18 @@ function renderMessages(isLoadMore = false, forceScrollToBottom = false) {
     // 节点系统：过滤掉已收纳节点的消息
     let displayHistory = chat.history;
     if (currentChatType === 'private' && chat.nodes) {
-        const archivedNodeIds = chat.nodes.filter(n => n.status === 'archived').map(n => n.id);
-        if (archivedNodeIds.length > 0) {
+        const archivedNodeIds = new Set(chat.nodes.filter(n => n.status === 'archived').map(n => n.id));
+        if (archivedNodeIds.size > 0) {
             let currentArchivedNodeId = null;
             displayHistory = chat.history.filter(m => {
                 // 如果消息本身带有 nodeId 且该节点已被收纳，直接过滤掉（包括 start 和 end 边界消息）
-                if (m.nodeId && archivedNodeIds.includes(m.nodeId)) {
+                if (m.nodeId && archivedNodeIds.has(m.nodeId)) {
                     return false;
                 }
                 
                 // 兼容旧逻辑：处理没有 nodeId 的普通消息，通过 start/end 边界来判断
                 if (m.isNodeBoundary) {
-                    if (m.nodeAction === 'start' && archivedNodeIds.includes(m.nodeId)) {
+                    if (m.nodeAction === 'start' && archivedNodeIds.has(m.nodeId)) {
                         currentArchivedNodeId = m.nodeId;
                         return false;
                     }

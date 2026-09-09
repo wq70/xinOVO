@@ -57,7 +57,8 @@ window.sendPayResponse = async function(msgId, action) {
     chat.history.push(newMsg);
     
     // 5. 保存并刷新到底部
-    if (typeof saveData === 'function') await saveData(); 
+    if (typeof saveCharacter === 'function') await saveCharacter(currentChatId);
+    else if (typeof saveData === 'function') await saveData();
     renderMessages(false, true); 
 };
 
@@ -142,7 +143,9 @@ function addMessageBubble(message, targetChatId, targetChatType) {
             }
             if (!invisibleRegex.test(message.content)) {
                 senderChat.unreadCount = (senderChat.unreadCount || 0) + 1;
-                saveData(); 
+                if (targetChatType === 'group' && typeof saveGroup === 'function') saveGroup(targetChatId);
+                else if (targetChatType === 'private' && typeof saveCharacter === 'function') saveCharacter(targetChatId);
+                else saveData();
                 renderChatList(); 
             }
             

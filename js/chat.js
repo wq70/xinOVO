@@ -646,7 +646,8 @@ function openChatRoom(chatId, type) {
     // 迁移旧的私聊数据 (仅群聊)
     if (type === 'group' && chat.privateSessions && typeof migratePrivateSessionsToHistory === 'function') {
         migratePrivateSessionsToHistory(chat);
-        saveData(); // 迁移后立即保存
+        if (typeof saveGroup === 'function') saveGroup(chatId); // 迁移后立即保存当前群
+        else saveData();
     }
 
     if (chat.unreadCount && chat.unreadCount > 0) {

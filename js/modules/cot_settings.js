@@ -1,4 +1,5 @@
 // --- 思维链(CoT)设置模块 ---
+const saveCotGlobalSettings = () => saveGlobalSettings(['cotSettings', 'cotPresets']);
 
 const DEFAULT_COT_ITEMS = [
     { id: 'cot_item_1', name: '引子', content: '[System Directive]:\n你必须严格遵守 [incipere] 协议。在回复前，请先进入 <thinking> 标签进行深度推演。\n请按以下步骤查阅 System Prompt 中的模块并思考：', enabled: true, locked: true },
@@ -68,7 +69,7 @@ function initCotSettings() {
                 db.cotSettings.offlineEnabled = e.target.checked;
             }
             
-            await saveData();
+            await saveCotGlobalSettings();
             showToast(e.target.checked ? '思维链已启用' : '思维链已禁用');
         });
     }
@@ -79,7 +80,7 @@ function initCotSettings() {
         humanRunSwitch.addEventListener('change', async (e) => {
             if (!db.cotSettings) db.cotSettings = { enabled: false, activePresetId: 'default' };
             db.cotSettings.humanRunEnabled = e.target.checked;
-            await saveData();
+            await saveCotGlobalSettings();
             showToast(e.target.checked ? '角色活人运转已启用' : '角色活人运转已禁用');
         });
     }
@@ -97,7 +98,7 @@ function initCotSettings() {
                 } else if (currentCotMode === 'offline') {
                     db.cotSettings.activeOfflinePresetId = presetId;
                 }
-                await saveData();
+                await saveCotGlobalSettings();
                 renderCotItems();
                 showToast('已切换预设');
             }
@@ -244,7 +245,7 @@ function loadCotSettings() {
             name: '默认思维链',
             items: JSON.parse(JSON.stringify(DEFAULT_COT_ITEMS))
         }];
-        saveData();
+        saveCotGlobalSettings();
     } else {
         // 检查并修复旧数据的锁定状态
         const defaultPreset = db.cotPresets.find(p => p.id === 'default');
@@ -256,7 +257,7 @@ function loadCotSettings() {
                     hasChanges = true;
                 }
             });
-            if (hasChanges) saveData();
+            if (hasChanges) saveCotGlobalSettings();
         }
     }
 
@@ -269,13 +270,13 @@ function loadCotSettings() {
             items: JSON.parse(JSON.stringify(DEFAULT_CALL_COT_ITEMS))
         };
         db.cotPresets.push(callPreset);
-        saveData();
+        saveCotGlobalSettings();
     }
 
     // 确保 activeCallPresetId 存在
     if (!db.cotSettings.activeCallPresetId) {
         db.cotSettings.activeCallPresetId = 'default_call';
-        saveData();
+        saveCotGlobalSettings();
     }
 
     // 确保线下预设存在
@@ -287,13 +288,13 @@ function loadCotSettings() {
             items: JSON.parse(JSON.stringify(DEFAULT_OFFLINE_COT_ITEMS))
         };
         db.cotPresets.push(offlinePreset);
-        saveData();
+        saveCotGlobalSettings();
     }
 
     // 确保 activeOfflinePresetId 存在
     if (!db.cotSettings.activeOfflinePresetId) {
         db.cotSettings.activeOfflinePresetId = 'default_offline';
-        saveData();
+        saveCotGlobalSettings();
     }
 
     // 根据当前模式设置开关状态
@@ -350,7 +351,7 @@ function renderCotPresetSelect() {
             } else if (currentCotMode === 'offline') {
                 db.cotSettings.activeOfflinePresetId = activeId;
             }
-            saveData();
+            saveCotGlobalSettings();
         }
         select.value = activeId;
     }
@@ -389,7 +390,7 @@ function renderCotItems() {
         checkbox.checked = item.enabled;
         checkbox.addEventListener('change', async (e) => {
             item.enabled = e.target.checked;
-            await saveData();
+            await saveCotGlobalSettings();
         });
         const slider = document.createElement('span');
         slider.className = 'kkt-slider';
@@ -550,7 +551,7 @@ function renderCotItems() {
             const [movedItem] = items.splice(draggedCotItemIndex, 1);
             items.splice(targetIndex, 0, movedItem);
 
-            await saveData();
+            await saveCotGlobalSettings();
             renderCotItems();
         });
 
@@ -605,7 +606,7 @@ async function moveCotItem(index, direction) {
     activePreset.items[index] = activePreset.items[newIndex];
     activePreset.items[newIndex] = temp;
 
-    await saveData();
+    await saveCotGlobalSettings();
     renderCotItems();
 }
 
@@ -628,7 +629,7 @@ async function deleteCotItem(index) {
     if (!confirm('确定要删除这个条目吗？')) return;
 
     activePreset.items.splice(index, 1);
-    await saveData();
+    await saveCotGlobalSettings();
     renderCotItems();
 }
 
@@ -741,7 +742,7 @@ async function saveCotItem(e) {
         }
     }
 
-    await saveData();
+    await saveCotGlobalSettings();
     document.getElementById('cot-item-edit-modal').classList.remove('visible');
     renderCotItems();
     showToast('条目已保存');
@@ -781,7 +782,7 @@ async function createNewCotPreset() {
     } else if (currentCotMode === 'offline') {
         db.cotSettings.activeOfflinePresetId = newPreset.id;
     }
-    await saveData();
+    await saveCotGlobalSettings();
     
     loadCotSettings(); // 重新加载以更新下拉框和列表
     showToast('新预设已创建');
@@ -811,7 +812,7 @@ async function resetCotPreset() {
         activePreset.items = JSON.parse(JSON.stringify(DEFAULT_OFFLINE_COT_ITEMS));
     }
     
-    await saveData();
+    await saveCotGlobalSettings();
     renderCotItems();
     showToast('预设已重置为默认状态');
 }
@@ -843,7 +844,7 @@ function openCotPresetManageModal() {
             const newName = prompt('请输入新名称：', preset.name);
             if (newName) {
                 preset.name = newName;
-                await saveData();
+                await saveCotGlobalSettings();
                 openCotPresetManageModal(); // 刷新列表
                 renderCotPresetSelect(); // 刷新主界面下拉框
             }
@@ -878,7 +879,7 @@ function openCotPresetManageModal() {
                 db.cotSettings.activeOfflinePresetId = db.cotPresets[0].id;
             }
 
-            await saveData();
+            await saveCotGlobalSettings();
             openCotPresetManageModal();
             loadCotSettings();
         }, true);
@@ -920,7 +921,8 @@ async function importCotPreset(e) {
         } else if (currentCotMode === 'offline') {
             db.cotSettings.activeOfflinePresetId = preset.id;
         }
-        await saveData();
+        await saveCotGlobalSettings();
+
         
         document.getElementById('cot-preset-manage-modal').classList.remove('visible');
         loadCotSettings();

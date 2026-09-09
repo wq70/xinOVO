@@ -288,6 +288,10 @@ async function saveSettingsFromSidebar() {
         e.vcNovelAiEnabled = document.getElementById('setting-vc-novelai-enabled').checked;
         const vcGptDrawSave = document.getElementById('setting-vc-gpt-draw-enabled');
         e.vcGptDrawEnabled = vcGptDrawSave ? vcGptDrawSave.checked : false;
+        const vcGoogleImageSave = document.getElementById('setting-vc-google-image-enabled');
+        e.vcGoogleImageEnabled = vcGoogleImageSave ? vcGoogleImageSave.checked : false;
+        const vcStabilityImageSave = document.getElementById('setting-vc-stability-image-enabled');
+        e.vcStabilityImageEnabled = vcStabilityImageSave ? vcStabilityImageSave.checked : false;
         const saveCallOnInterruptSave = document.getElementById('setting-save-call-on-interrupt');
         e.saveCallOnInterrupt = saveCallOnInterruptSave ? saveCallOnInterruptSave.checked : false;
 

@@ -1,3 +1,5 @@
+const saveMainApiSettings = () => saveGlobalSettings(['apiSettings', 'gptImageSettings', 'imageRecognitionEnabled', 'weatherApiSettings']);
+
 function setupApiSettingsApp() {
     const e = document.getElementById('api-form'), t = document.getElementById('fetch-models-btn'),
         a = document.getElementById('api-model'), n = document.getElementById('api-provider'),
@@ -141,7 +143,7 @@ function setupApiSettingsApp() {
             db.imageRecognitionEnabled = irSwitch.checked;
         }
 
-        await saveData();
+        await saveMainApiSettings();
         showToast('API设置已保存！')
     });
     
@@ -201,7 +203,7 @@ function setupApiSettingsApp() {
                     provider: weatherProviderEl.value,
                     key: weatherKeyEl ? weatherKeyEl.value.trim() : ''
                 };
-                await saveData();
+                await saveMainApiSettings();
                 showToast('全局天气 API 设置已保存！');
             });
         }
@@ -212,6 +214,10 @@ function setupApiSettingsApp() {
 
     // === GPT 生图 API 设置 ===
     setupGptImageSettings();
+
+    // === Google、Stability 与跨平台氛围组 ===
+    setupAdditionalImageProviders();
+    setupImageAtmosphereGroups();
 
     // === API 设置搜索功能 ===
     const searchInput = document.getElementById('api-settings-search-input');

@@ -135,9 +135,12 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate) {
     }
 
     // === 视频通话生图模式 ===
-    const _vcNaiEnabled = chat.vcNovelAiEnabled && db.novelAiSettings && db.novelAiSettings.enabled && db.novelAiSettings.token && callType === 'video';
+    const _vcNaiEnabled = chat.vcNovelAiEnabled && db.novelAiSettings && db.novelAiSettings.enabled && (db.novelAiSettings.token || db.novelAiSettings.authMode === 'none') && callType === 'video';
     const _vcGptDrawEnabled = chat.vcGptDrawEnabled && db.gptImageSettings && db.gptImageSettings.enabled && db.gptImageSettings.url && db.gptImageSettings.key && callType === 'video';
-    if (_vcNaiEnabled || _vcGptDrawEnabled) {
+    const _vcGoogleEnabled = chat.vcGoogleImageEnabled && db.googleImageSettings?.enabled && db.googleImageSettings?.key && callType === 'video';
+    const _vcStabilityEnabled = chat.vcStabilityImageEnabled && db.stabilityImageSettings?.enabled && db.stabilityImageSettings?.key && callType === 'video';
+    const _vcImageEnabled = _vcNaiEnabled || _vcGptDrawEnabled || _vcGoogleEnabled || _vcStabilityEnabled;
+    if (_vcImageEnabled) {
         systemPrompt += `\n【视频通话生图模式】\n`;
         systemPrompt += `你正在视频通话中，每次回复时你必须额外输出一条 [${chat.realName}的画面生图：{{english, danbooru, tags}}] 来描述当前视频画面中你的样子。\n`;
         systemPrompt += `tag 规则：根据角色性别用 1boy 或 1girl，必须包含角色外貌特征（发色、瞳色、发型等）、当前服装、表情、动作/姿势、背景/场景。不要加质量词。不超过 25 个 tag。用英文逗号分隔。\n`;
@@ -147,7 +150,7 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate) {
 
     systemPrompt += `【输出格式】\n`;
     systemPrompt += `请严格按照以下格式输出（可以发送多条）：\n`;
-    if (_vcNaiEnabled || _vcGptDrawEnabled) {
+    if (_vcImageEnabled) {
         systemPrompt += `[${chat.realName}的画面生图：{{english, danbooru, tags}}]（每次必须恰好输出一条）\n`;
     }
     systemPrompt += `${callType === 'video' ? `[${chat.realName}的画面/环境音：描述画面动作或环境声音]\n[${chat.realName}的声音：${chat.realName}说话的内容]` : `[${chat.realName}的环境音：描述环境声音]\n[${chat.realName}的声音：${chat.realName}说话的内容]`}\n`;

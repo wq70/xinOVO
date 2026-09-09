@@ -1,3 +1,5 @@
+const saveTTSGlobalSettings = () => saveGlobalSettings(['ttsPresets']);
+
 function saveCurrentTTSAsPreset() {
     const name = prompt('请输入 TTS 预设名称：');
     if (!name || !name.trim()) return;
@@ -7,19 +9,23 @@ function saveCurrentTTSAsPreset() {
     const apiKey = document.getElementById('minimax-api-key')?.value || '';
     const domain = document.getElementById('minimax-domain')?.value || 'api.minimaxi.com';
     const model = document.getElementById('minimax-tts-model')?.value || 'speech-2.8-hd';
+    const provider = document.getElementById('tts-provider')?.value || 'minimax';
+    const volc = typeof TTSSettings !== 'undefined' ? TTSSettings.readVolcengineFields('char') : {};
     
     if (!db.ttsPresets) db.ttsPresets = [];
     
     db.ttsPresets.push({
         name: name.trim(),
+        provider,
         enabled,
         groupId,
         apiKey,
         domain,
-        model
+        model,
+        ...volc
     });
     
-    saveData();
+    saveTTSGlobalSettings();
     showToast('TTS 预设已保存');
     populateTTSPresetSelect();
 }
@@ -34,6 +40,13 @@ function applyTTSPreset(name) {
     document.getElementById('minimax-api-key').value = preset.apiKey || '';
     document.getElementById('minimax-domain').value = preset.domain || 'api.minimaxi.com';
     document.getElementById('minimax-tts-model').value = preset.model || 'speech-2.8-hd';
+    const provider = preset.provider || 'minimax';
+    const providerSelect = document.getElementById('tts-provider');
+    if (providerSelect) providerSelect.value = provider;
+    if (typeof TTSSettings !== 'undefined') {
+        TTSSettings.loadVolcengineFields('char', preset);
+        TTSSettings.toggleProviderConfig('char', provider);
+    }
     
     showToast(`已应用 TTS 预设：${name}`);
 }
@@ -83,7 +96,7 @@ function openTTSManageModal() {
             const newName = prompt('输入新名称：', p.name);
             if (!newName || newName === p.name) return;
             db.ttsPresets[idx].name = newName;
-            saveData();
+            saveTTSGlobalSettings();
             openTTSManageModal();
             populateTTSPresetSelect();
         };
@@ -95,7 +108,7 @@ function openTTSManageModal() {
         delBtn.onclick = function() {
             if (!confirm('确定删除预设 "' + p.name + '" ?')) return;
             db.ttsPresets.splice(idx, 1);
-            saveData();
+            saveTTSGlobalSettings();
             openTTSManageModal();
             populateTTSPresetSelect();
         };
@@ -121,7 +134,7 @@ function importTTSPresets() {
             if (!Array.isArray(imported)) throw new Error('格式错误');
             db.ttsPresets = db.ttsPresets || [];
             db.ttsPresets.push(...imported);
-            await saveData();
+            await saveTTSGlobalSettings();
             populateTTSPresetSelect();
             showToast(`已导入 ${imported.length} 个 TTS 预设`);
         } catch (err) {
@@ -134,7 +147,8 @@ function importTTSPresets() {
 function exportTTSPresets() {
     const presets = db.ttsPresets || [];
     if (!presets.length) return showToast('没有可导出的 TTS 预设');
-    const blob = new Blob([JSON.stringify(presets, null, 2)], { type: 'application/json' });
+    const safePresets = presets.map(({ apiKey, volcAccessToken, ...preset }) => ({ ...preset, apiKey: '', volcAccessToken: '' }));
+    const blob = new Blob([JSON.stringify(safePresets, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

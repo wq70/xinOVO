@@ -1,3 +1,9 @@
+const appearanceStatusSettingKeys = ['nightModeSettings', 'homeStatusBarSettings'];
+
+function saveAppearanceStatusSettings() {
+    return saveGlobalSettings(appearanceStatusSettingKeys);
+}
+
 function setupNightModeBindings() {
     const enabledCb = document.getElementById('night-mode-enabled');
     const autoCb = document.getElementById('night-mode-auto');
@@ -9,7 +15,7 @@ function setupNightModeBindings() {
     if (enabledCb) enabledCb.addEventListener('change', async () => {
         if (!db.nightModeSettings) db.nightModeSettings = {};
         db.nightModeSettings.enabled = enabledCb.checked;
-        await saveData();
+        await saveAppearanceStatusSettings();
         applyNightMode();
         showToast(enabledCb.checked ? '夜间模式已开启' : '夜间模式已关闭');
     });
@@ -18,28 +24,28 @@ function setupNightModeBindings() {
         if (!db.nightModeSettings) db.nightModeSettings = {};
         db.nightModeSettings.auto = autoCb.checked;
         if (scheduleDiv) scheduleDiv.style.display = autoCb.checked ? 'flex' : 'none';
-        await saveData();
+        await saveAppearanceStatusSettings();
         applyNightMode();
     });
 
     if (startInput) startInput.addEventListener('change', async () => {
         if (!db.nightModeSettings) db.nightModeSettings = {};
         db.nightModeSettings.startTime = startInput.value;
-        await saveData();
+        await saveAppearanceStatusSettings();
         applyNightMode();
     });
 
     if (endInput) endInput.addEventListener('change', async () => {
         if (!db.nightModeSettings) db.nightModeSettings = {};
         db.nightModeSettings.endTime = endInput.value;
-        await saveData();
+        await saveAppearanceStatusSettings();
         applyNightMode();
     });
 
     document.getElementById('night-css-apply-btn')?.addEventListener('click', async () => {
         if (!db.nightModeSettings) db.nightModeSettings = {};
         db.nightModeSettings.customCss = cssArea?.value || '';
-        await saveData();
+        await saveAppearanceStatusSettings();
         applyNightMode();
         showToast('夜间模式 CSS 已应用');
     });
@@ -48,7 +54,7 @@ function setupNightModeBindings() {
         if (!db.nightModeSettings) db.nightModeSettings = {};
         db.nightModeSettings.customCss = '';
         if (cssArea) cssArea.value = DEFAULT_NIGHT_MODE_CSS;
-        await saveData();
+        await saveAppearanceStatusSettings();
         applyNightMode();
         showToast('夜间模式 CSS 已重置为默认代码');
     });
@@ -81,7 +87,7 @@ function setupNightModeBindings() {
                     return;
                 }
                 db.nightModeSettings = data.settings;
-                await saveData();
+                await saveAppearanceStatusSettings();
                 applyNightMode();
                 renderCustomizeForm();
                 showToast('夜间模式配置已导入');
@@ -151,7 +157,7 @@ function setupStatusBarBindings() {
     if (enabledCb) enabledCb.addEventListener('change', async () => {
         if (!db.homeStatusBarSettings) db.homeStatusBarSettings = {};
         db.homeStatusBarSettings.enabled = enabledCb.checked;
-        await saveData();
+        await saveAppearanceStatusSettings();
         applyHomeStatusBar();
         showToast(enabledCb.checked ? '顶栏状态栏已开启' : '顶栏状态栏已关闭');
     });
@@ -161,7 +167,7 @@ function setupStatusBarBindings() {
         db.homeStatusBarSettings.containerCss = containerCssArea?.value || '';
         db.homeStatusBarSettings.timeCss = timeCssArea?.value || '';
         db.homeStatusBarSettings.batteryCss = batteryCssArea?.value || '';
-        await saveData();
+        await saveAppearanceStatusSettings();
         applyHomeStatusBar();
         showToast('顶栏样式已应用');
     });
@@ -174,7 +180,7 @@ function setupStatusBarBindings() {
         if (containerCssArea) containerCssArea.value = '';
         if (timeCssArea) timeCssArea.value = '';
         if (batteryCssArea) batteryCssArea.value = '';
-        await saveData();
+        await saveAppearanceStatusSettings();
         applyHomeStatusBar();
         showToast('顶栏样式已重置');
     });
@@ -207,7 +213,7 @@ function setupStatusBarBindings() {
                     return;
                 }
                 db.homeStatusBarSettings = data.settings;
-                await saveData();
+                await saveAppearanceStatusSettings();
                 applyHomeStatusBar();
                 renderCustomizeForm();
                 showToast('顶栏配置已导入');

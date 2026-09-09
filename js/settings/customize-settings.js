@@ -1,3 +1,15 @@
+const customizeSettingKeys = [
+    'customAppNames', 'customIcons', 'fontBuffer', 'fontSizeScale', 'fontUrl',
+    'globalCss', 'globalCssPresets', 'globalIncomingCallSound',
+    'globalMessageSentSound', 'globalReceiveSound', 'globalSendSound',
+    'homeStatusBarSettings', 'homeWidgetSettings', 'localFontName',
+    'multiMsgSoundEnabled', 'nightModeSettings'
+];
+
+function saveCustomizeSettings() {
+    return saveGlobalSettings(customizeSettingKeys);
+}
+
 function setupCustomizeApp() {
     const customizeForm = document.getElementById('customize-form');
     
@@ -18,7 +30,7 @@ function setupCustomizeApp() {
             if (db.customIcons) {
                 delete db.customIcons[iconId];
             }
-            await saveData();
+            await saveCustomizeSettings();
             renderCustomizeForm();
             setupHomeScreen();
             showToast('图标已重置');
@@ -29,7 +41,7 @@ function setupCustomizeApp() {
             if (db.customAppNames) {
                 delete db.customAppNames[nameId];
             }
-            await saveData();
+            await saveCustomizeSettings();
             renderCustomizeForm();
             setupHomeScreen();
             showToast('名称已重置');
@@ -38,7 +50,7 @@ function setupCustomizeApp() {
         if (target.matches('#reset-all-names-btn')) {
             if (confirm('确定要将所有应用名称恢复为默认吗？')) {
                 db.customAppNames = {};
-                await saveData();
+                await saveCustomizeSettings();
                 renderCustomizeForm();
                 setupHomeScreen();
                 showToast('所有名称已恢复默认');
@@ -48,7 +60,7 @@ function setupCustomizeApp() {
         if (target.matches('#reset-widget-btn')) {
             if (confirm('确定要将小部件恢复为默认设置吗？')) {
                 db.homeWidgetSettings = JSON.parse(JSON.stringify(defaultWidgetSettings));
-                await saveData();
+                await saveCustomizeSettings();
                 renderCustomizeForm();
                 setupHomeScreen();
                 showToast('小部件已恢复默认');
@@ -72,7 +84,7 @@ function setupCustomizeApp() {
             const newCss = textarea.value;
             db.globalCss = newCss;
             applyGlobalCss(newCss);
-            await saveData();
+            await saveCustomizeSettings();
             showToast('全局样式已应用');
         }
         
@@ -94,7 +106,7 @@ function setupCustomizeApp() {
             textarea.value = '';
             db.globalCss = '';
             applyGlobalCss('');
-            await saveData();
+            await saveCustomizeSettings();
             showToast('已重置CSS内容');
         }
         
@@ -108,7 +120,7 @@ function setupCustomizeApp() {
                 textarea.value = preset.css;
                 db.globalCss = preset.css;
                 applyGlobalCss(preset.css);
-                saveData();
+                saveCustomizeSettings();
                 showToast('全局CSS预设已应用');
             }
         }
@@ -126,7 +138,7 @@ function setupCustomizeApp() {
             } else {
                 db.globalCssPresets.push({ name, css });
             }
-            saveData();
+            saveCustomizeSettings();
             populateGlobalCssPresetSelect();
             showToast('全局CSS预设已保存');
         }
@@ -139,7 +151,7 @@ function setupCustomizeApp() {
             const fontUrl = document.getElementById('customize-font-url').value.trim();
             db.fontUrl = fontUrl;
             db.localFontName = '';
-            await saveData();
+            await saveCustomizeSettings();
             applyGlobalFont(fontUrl);
             const nameEl = document.getElementById('local-font-name');
             if (nameEl) nameEl.style.display = 'none';
@@ -150,7 +162,7 @@ function setupCustomizeApp() {
             document.getElementById('customize-font-url').value = '';
             db.fontUrl = '';
             db.localFontName = '';
-            await saveData();
+            await saveCustomizeSettings();
             applyGlobalFont('');
             const nameEl = document.getElementById('local-font-name');
             if (nameEl) nameEl.style.display = 'none';
@@ -286,7 +298,7 @@ function setupCustomizeApp() {
         if (target.matches('#reset-send-sound-btn')) {
             document.getElementById('global-send-sound-url').value = '';
             db.globalSendSound = '';
-            saveData();
+            saveCustomizeSettings();
             showToast('已重置');
         }
         if (target.matches('#test-receive-sound-btn')) {
@@ -305,7 +317,7 @@ function setupCustomizeApp() {
         if (target.matches('#reset-receive-sound-btn')) {
             document.getElementById('global-receive-sound-url').value = '';
             db.globalReceiveSound = '';
-            saveData();
+            saveCustomizeSettings();
             showToast('已重置');
         }
         if (target.matches('#test-message-sent-sound-btn')) {
@@ -314,7 +326,7 @@ function setupCustomizeApp() {
             const url = (urlInput && urlInput.value && urlInput.value.trim()) || '';
             if (url) {
                 db.globalMessageSentSound = url;
-                saveData();
+                saveCustomizeSettings();
                 try {
                     const audio = new Audio(url);
                     audio.play().catch(e => showToast('播放失败: ' + e.message));
@@ -330,7 +342,7 @@ function setupCustomizeApp() {
             const urlInput = formGroup && formGroup.querySelector('input[type="url"]');
             if (urlInput) urlInput.value = '';
             db.globalMessageSentSound = '';
-            saveData();
+            saveCustomizeSettings();
             showToast('已重置');
         }
         if (target.matches('#test-incoming-call-sound-btn')) {
@@ -374,7 +386,7 @@ function setupCustomizeApp() {
         if (target.matches('#reset-incoming-call-sound-btn')) {
             document.getElementById('global-incoming-call-sound-url').value = '';
             db.globalIncomingCallSound = '';
-            saveData();
+            saveCustomizeSettings();
             showToast('已重置');
         }
     });
@@ -391,7 +403,7 @@ function setupCustomizeApp() {
                 db.customIcons[iconId] = newUrl;
                 if(previewImg) previewImg.src = newUrl;
             }
-            await saveData();
+            await saveCustomizeSettings();
             setupHomeScreen();
         } 
         else if (target.dataset.nameId) {
@@ -403,24 +415,24 @@ function setupCustomizeApp() {
             } else {
                 delete db.customAppNames[nameId];
             }
-            await saveData();
+            await saveCustomizeSettings();
             setupHomeScreen();
         }
         else if (target.id === 'global-send-sound-url') {
             db.globalSendSound = target.value.trim();
-            await saveData();
+            await saveCustomizeSettings();
         }
         else if (target.id === 'global-receive-sound-url') {
             db.globalReceiveSound = target.value.trim();
-            await saveData();
+            await saveCustomizeSettings();
         }
         else if (target.id === 'global-message-sent-sound-url') {
             db.globalMessageSentSound = target.value.trim();
-            await saveData();
+            await saveCustomizeSettings();
         }
         else if (target.id === 'global-incoming-call-sound-url') {
             db.globalIncomingCallSound = target.value.trim();
-            await saveData();
+            await saveCustomizeSettings();
         }
         else if (target.dataset.widgetPart) {
             const part = target.dataset.widgetPart;
@@ -432,7 +444,7 @@ function setupCustomizeApp() {
             } else { 
                 db.homeWidgetSettings[part] = newValue;
             }
-            await saveData();
+            await saveCustomizeSettings();
             setupHomeScreen();
         }
     });
@@ -564,7 +576,7 @@ function setupCustomizeApp() {
                 if (previewImg) previewImg.src = compressedUrl;
                 if (urlInput) urlInput.value = compressedUrl;
                 
-                await saveData();
+                await saveCustomizeSettings();
                 setupHomeScreen();
                 showToast('图标已更新');
             } catch (error) {
@@ -577,19 +589,19 @@ function setupCustomizeApp() {
 
         if (e.target.id === 'global-send-sound-url') {
             db.globalSendSound = e.target.value.trim();
-            saveData();
+            saveCustomizeSettings();
         }
         if (e.target.id === 'global-receive-sound-url') {
             db.globalReceiveSound = e.target.value.trim();
-            saveData();
+            saveCustomizeSettings();
         }
         if (e.target.id === 'global-incoming-call-sound-url') {
             db.globalIncomingCallSound = e.target.value.trim();
-            saveData();
+            saveCustomizeSettings();
         }
         if (e.target.id === 'multi-msg-sound-switch') {
             db.multiMsgSoundEnabled = e.target.checked;
-            saveData();
+            saveCustomizeSettings();
         }
         if (e.target.id === 'global-send-sound-upload' || e.target.id === 'global-receive-sound-upload' || e.target.id === 'global-message-sent-sound-upload' || e.target.id === 'global-incoming-call-sound-upload') {
             const file = e.target.files[0];
@@ -615,7 +627,7 @@ function setupCustomizeApp() {
                     db.globalIncomingCallSound = base64;
                     document.getElementById('global-incoming-call-sound-url').value = base64;
                 }
-                await saveData();
+                await saveCustomizeSettings();
                 showToast('提示音已上传');
             };
             reader.readAsDataURL(file);
@@ -648,7 +660,7 @@ function setupCustomizeApp() {
                     nameEl.style.display = 'block';
                 }
                 
-                await saveData();
+                await saveCustomizeSettings();
                 applyGlobalFont(db.fontUrl);
                 showToast('本地字体已应用！');
             };
@@ -1326,7 +1338,7 @@ body.night-mode-active .message-input-area textarea {
         fontSizeSlider.addEventListener('change', async (e) => {
             const scale = parseFloat(e.target.value);
             db.fontSizeScale = scale;
-            await saveData();
+            await saveCustomizeSettings();
             showToast('字体大小已保存');
         });
     }

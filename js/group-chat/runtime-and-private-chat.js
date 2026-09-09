@@ -392,7 +392,8 @@ function setupGroupChatSystem() {
                 }
             });
             if (selectedCharIds.length > 0) {
-                await saveData();
+                if (typeof saveGroup === 'function') await saveGroup(group.id);
+                else await saveData();
                 renderGroupMembersInSettings(group);
                 renderMessages(false, true);
                 showToast('已邀请新成员');

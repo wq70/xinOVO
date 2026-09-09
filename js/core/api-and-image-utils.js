@@ -312,9 +312,7 @@ function openImageViewer(src, msgId = null) {
 
                 if (!logModal || !logContent) return;
 
-                let engine = '未知';
-                if (db.novelAiSettings && db.novelAiSettings.enabled) engine = 'novelai';
-                if (db.gptImageSettings && db.gptImageSettings.enabled) engine = 'gpt';
+                let engine = msgObj.imageGenerationMeta?.provider || db.activeImageProvider || '未知';
 
                 const pvMatch = msgObj.content.match(/\[.*?发来的照片\/视频[：:]([\s\S]+?)\]/);
                 let promptRaw = pvMatch ? pvMatch[1].trim() : msgObj.content;
@@ -323,7 +321,12 @@ function openImageViewer(src, msgId = null) {
                 const tagMatch = promptRaw.match(/\{\{([\s\S]+?)\}\}/);
                 if (tagMatch) finalPrompt = tagMatch[1].trim();
 
-                let logText = `引擎: ${engine.toUpperCase()}\n状态: 成功\n\n[提取的提示词]\n${finalPrompt}`;
+                let logText = `引擎: ${engine.toUpperCase()}\n状态: 成功`;
+                if (msgObj.imageGenerationMeta?.model) logText += `\n模型: ${msgObj.imageGenerationMeta.model}`;
+                if (msgObj.imageGenerationMeta?.size) logText += `\n尺寸/比例: ${msgObj.imageGenerationMeta.size}`;
+                if (msgObj.imageGenerationMeta?.seed != null) logText += `\nSeed: ${msgObj.imageGenerationMeta.seed}`;
+                if (msgObj.imageGenerationMeta?.atmosphere) logText += `\n氛围组: ${msgObj.imageGenerationMeta.atmosphere}`;
+                logText += `\n\n[提取的提示词]\n${finalPrompt}`;
                 
                 if (engine === 'novelai' && db.novelAiSettings) {
                     if (db.novelAiSettings.systemPrompt) logText += `\n\n[系统附加词]\n${db.novelAiSettings.systemPrompt}`;
@@ -332,6 +335,12 @@ function openImageViewer(src, msgId = null) {
                 } else if (engine === 'gpt' && db.gptImageSettings) {
                     if (db.gptImageSettings.systemPrompt) logText += `\n\n[系统附加词]\n${db.gptImageSettings.systemPrompt}`;
                     if (db.gptImageSettings.negativePrompt) logText += `\n\n[负面提示词]\n${db.gptImageSettings.negativePrompt}`;
+                } else if (engine === 'google' && db.googleImageSettings) {
+                    if (db.googleImageSettings.systemPrompt) logText += `\n\n[系统附加词]\n${db.googleImageSettings.systemPrompt}`;
+                    if (db.googleImageSettings.negativePrompt) logText += `\n\n[避免内容]\n${db.googleImageSettings.negativePrompt}`;
+                } else if (engine === 'stability' && db.stabilityImageSettings) {
+                    if (db.stabilityImageSettings.systemPrompt) logText += `\n\n[系统附加词]\n${db.stabilityImageSettings.systemPrompt}`;
+                    if (db.stabilityImageSettings.negativePrompt) logText += `\n\n[负面提示词]\n${db.stabilityImageSettings.negativePrompt}`;
                 }
 
                 logContent.textContent = logText;
@@ -408,6 +417,36 @@ async function _nai_extractPngFromZipBlob(zipBlob) {
     const arrayBuffer = await zipBlob.arrayBuffer();
     const uint8 = new Uint8Array(arrayBuffer);
 
+    // 标准 ZIP 中图片通常经过 deflate 压缩，不能只在压缩字节里搜索 PNG 签名。
+    const view = new DataView(arrayBuffer);
+    for (let offset = 0; offset <= uint8.length - 46; offset++) {
+        if (view.getUint32(offset, true) !== 0x02014b50) continue;
+        const method = view.getUint16(offset + 10, true);
+        const compressedSize = view.getUint32(offset + 20, true);
+        const fileNameLength = view.getUint16(offset + 28, true);
+        const extraLength = view.getUint16(offset + 30, true);
+        const commentLength = view.getUint16(offset + 32, true);
+        const localOffset = view.getUint32(offset + 42, true);
+        const fileName = new TextDecoder().decode(uint8.slice(offset + 46, offset + 46 + fileNameLength));
+        if (/\.(?:png|jpe?g|webp)$/i.test(fileName) && localOffset + 30 <= uint8.length && view.getUint32(localOffset, true) === 0x04034b50) {
+            const localNameLength = view.getUint16(localOffset + 26, true);
+            const localExtraLength = view.getUint16(localOffset + 28, true);
+            const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+            const compressed = uint8.slice(dataStart, dataStart + compressedSize);
+            let imageBytes = compressed;
+            if (method === 8 && typeof DecompressionStream !== 'undefined') {
+                const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+                imageBytes = new Uint8Array(await new Response(stream).arrayBuffer());
+            } else if (method !== 0) {
+                offset += 45 + fileNameLength + extraLength + commentLength;
+                continue;
+            }
+            const mime = /\.jpe?g$/i.test(fileName) ? 'image/jpeg' : /\.webp$/i.test(fileName) ? 'image/webp' : 'image/png';
+            return _nai_blobToDataUrl(new Blob([imageBytes], { type: mime }));
+        }
+        offset += 45 + fileNameLength + extraLength + commentLength;
+    }
+
     // 在 zip 字节流中定位 PNG 签名 (89 50 4E 47)
     let pngStart = -1;
     for (let i = 0; i < uint8.length - 8; i++) {
@@ -444,13 +483,104 @@ async function _nai_extractPngFromZipBlob(zipBlob) {
 }
 
 // 从 base64 字符串解析为图片 DataURL
+function _image_base64Kind(b64) {
+    const value = String(b64 || '').replace(/^data:[^,]+,/, '').trim();
+    if (value.startsWith('iVBOR')) return 'image/png';
+    if (value.startsWith('/9j/')) return 'image/jpeg';
+    if (value.startsWith('UklGR')) return 'image/webp';
+    if (value.startsWith('R0lGOD')) return 'image/gif';
+    if (value.startsWith('UEsDB')) return 'application/zip';
+    return '';
+}
+
 function _nai_resolveBase64Image(b64) {
-    if (!b64) return null;
-    if (b64.startsWith('http')) return b64;
-    if (b64.startsWith('data:image')) return b64;
-    if (b64.startsWith('iVBOR')) return `data:image/png;base64,${b64}`;
-    if (b64.startsWith('/9j/')) return `data:image/jpeg;base64,${b64}`;
-    return `data:image/png;base64,${b64}`;
+    if (!b64 || typeof b64 !== 'string') return null;
+    const value = b64.trim();
+    if (/^https?:\/\//i.test(value) || value.startsWith('blob:')) return value;
+    if (value.startsWith('data:image/')) return value;
+    const mime = _image_base64Kind(value);
+    return mime.startsWith('image/') ? `data:${mime};base64,${value.replace(/^data:[^,]+,/, '')}` : null;
+}
+
+function _image_base64ToBlob(b64, mimeType) {
+    const value = String(b64 || '').replace(/^data:[^,]+,/, '').replace(/\s/g, '');
+    const raw = atob(value);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    return new Blob([bytes], { type: mimeType || _image_base64Kind(value) || 'application/octet-stream' });
+}
+
+async function _image_resolveCandidate(candidate) {
+    if (!candidate) return null;
+    if (typeof candidate === 'object') {
+        candidate = candidate.url || candidate.b64_json || candidate.base64 || candidate.image || candidate.data;
+    }
+    if (typeof candidate !== 'string') return null;
+    const value = candidate.trim();
+    if (/^https?:\/\//i.test(value) || value.startsWith('blob:') || value.startsWith('data:image/')) return value;
+    const kind = _image_base64Kind(value);
+    if (kind === 'application/zip') return _nai_extractPngFromZipBlob(_image_base64ToBlob(value, kind));
+    return _nai_resolveBase64Image(value);
+}
+
+async function _image_extractFromJson(data) {
+    const candidates = [
+        Array.isArray(data?.data) ? data.data[0] : data?.data,
+        data?.output?.[0], data?.images?.[0], data?.result?.images?.[0],
+        data?.result?.image, data?.result, data?.image, data?.url, data?.b64_json
+    ];
+    for (const candidate of candidates) {
+        const resolved = await _image_resolveCandidate(candidate);
+        if (resolved) return resolved;
+    }
+    return null;
+}
+
+function _imageJoinUrl(base, path) {
+    const value = String(base || '').trim();
+    if (!value) return '';
+    if (/\/(?:images\/generations|generateContent|generate\/core|generate\/ultra)(?:\?|$)/i.test(value)) return value;
+    if (value.replace(/\/$/, '').endsWith('/v1') && path.startsWith('/v1/')) return value.replace(/\/$/, '') + path.slice(3);
+    return value.replace(/\/$/, '') + path;
+}
+
+function _imageGetAtmosphere(provider) {
+    const groups = Array.isArray(db?.imageAtmosphereGroups) ? db.imageAtmosphereGroups : [];
+    const group = groups.find(item => item && item.id === db.activeImageAtmosphereId && item.enabled !== false);
+    if (!group) return { prompt: '', negativePrompt: '', name: '' };
+    const providerPrompt = group.providerPrompts && group.providerPrompts[provider];
+    return {
+        name: group.name || '',
+        prompt: [group.prompt, providerPrompt].filter(Boolean).join(', '),
+        negativePrompt: group.negativePrompt || ''
+    };
+}
+
+function _imageMergePrompt(basePrompt, provider, systemPrompt, negativePrompt) {
+    const atmosphere = _imageGetAtmosphere(provider);
+    return {
+        prompt: [systemPrompt, atmosphere.prompt, basePrompt].filter(Boolean).join(', '),
+        negativePrompt: [negativePrompt, atmosphere.negativePrompt].filter(Boolean).join(', '),
+        atmosphere: atmosphere.name
+    };
+}
+
+async function _imageReadError(response, providerName) {
+    let detail = '';
+    try {
+        const text = await response.text();
+        try {
+            const json = JSON.parse(text);
+            detail = json?.error?.message || json?.message || json?.error || json?.code || text;
+        } catch (_) {
+            detail = text;
+        }
+    } catch (_) {}
+    detail = String(detail || '').replace(/(?:Bearer\s*;?\s*|sk-)[A-Za-z0-9._-]{8,}/gi, '[已隐藏密钥]').slice(0, 300);
+    if (response.status === 401 || response.status === 403) return new Error(`${providerName} 鉴权失败，请检查密钥和服务权限 (${response.status})`);
+    if (response.status === 402) return new Error(`${providerName} 额度不足 (402)`);
+    if (response.status === 429) return new Error(`${providerName} 请求过于频繁，请稍后再试 (429)`);
+    return new Error(`${providerName} 请求失败 (${response.status})${detail ? `：${detail}` : ''}`);
 }
 
 /**
@@ -486,7 +616,7 @@ async function generateGptImage(prompt, overrideSettings = {}, signal = null) {
     const systemPrompt = settings.systemPrompt || '';
     const negativePrompt = settings.negativePrompt || '';
 
-    // 智能拼接提示词
+    // 智能拼接提示词（保留旧系统词与角色画师词，并追加当前氛围组）
     const promptParts = [];
     if (systemPrompt) promptParts.push(systemPrompt);
     
@@ -498,11 +628,12 @@ async function generateGptImage(prompt, overrideSettings = {}, signal = null) {
     }
     
     promptParts.push(prompt.trim());
-    
-    let finalPrompt = promptParts.filter(Boolean).join(', ');
-    if (negativePrompt) finalPrompt = `${finalPrompt} --no ${negativePrompt}`;
 
-    const endpoint = url.endsWith('/') ? `${url}v1/images/generations` : `${url}/v1/images/generations`;
+    const merged = _imageMergePrompt(promptParts.filter(Boolean).join(', '), 'gpt', '', negativePrompt);
+    let finalPrompt = merged.prompt;
+    if (merged.negativePrompt) finalPrompt = `${finalPrompt} --no ${merged.negativePrompt}`;
+
+    const endpoint = _imageJoinUrl(url, '/v1/images/generations');
 
     console.log('[GPT Image] 发送生图请求:', { endpoint, model, size, prompt: finalPrompt });
 
@@ -523,53 +654,40 @@ async function generateGptImage(prompt, overrideSettings = {}, signal = null) {
     });
 
     if (!response.ok) {
-        let errDetail = '';
-        try {
-            const errObj = await response.json();
-            errDetail = errObj.error?.message || JSON.stringify(errObj);
-        } catch (_) {
-            errDetail = await response.text();
-        }
-        console.error(`[GPT Image] API 错误 (${response.status}):`, errDetail);
-        throw new Error(`API 返回错误 (${response.status}): ${errDetail.substring(0, 100)}`);
+        throw await _imageReadError(response, 'GPT 生图');
     }
 
     const data = await response.json();
-    if (!data.data || !data.data[0]) {
-        throw new Error('响应格式错误，未找到图片数据');
-    }
-
-    // 支持 url 或 b64_json
-    let imageUrl = data.data[0].url;
-    if (!imageUrl && data.data[0].b64_json) {
-        imageUrl = _nai_resolveBase64Image(data.data[0].b64_json);
-    }
+    let imageUrl = await _image_extractFromJson(data);
 
     if (!imageUrl) {
         throw new Error('响应数据中没有有效的图片链接或Base64数据');
     }
 
     console.log('[GPT Image] ✅ 生图成功');
-    return { imageUrl };
+    return { imageUrl, provider: 'gpt', model, size, atmosphere: merged.atmosphere };
 }
 
 /**
  * 统一的生图路由分发函数
- * 根据用户在全局设置中选择的引擎，自动调用 NovelAI 或 GPT
+ * 根据用户在全局设置中选择的引擎，调用对应提供商。
  * @param {string} prompt - 提示词
  * @returns {Promise<{imageUrl: string}>} - 返回生成的图片 DataURL/URL
  */
 async function generateImageDispatch(prompt, signal = null) {
-    const gptEnabled = db.gptImageSettings && db.gptImageSettings.enabled;
-    const naiEnabled = db.novelAiSettings && db.novelAiSettings.enabled;
-
-    if (gptEnabled) {
-        return generateGptImage(prompt, {}, signal);
-    } else if (naiEnabled) {
-        return generateNovelAiImage(prompt, {}, signal);
-    } else {
-        throw new Error('未开启任何生图引擎，请在设置中开启 NovelAI生图 或 GPT生图');
-    }
+    const enabled = {
+        gpt: !!db.gptImageSettings?.enabled,
+        novelai: !!db.novelAiSettings?.enabled,
+        google: !!db.googleImageSettings?.enabled,
+        stability: !!db.stabilityImageSettings?.enabled
+    };
+    let provider = db.activeImageProvider;
+    if (!enabled[provider]) provider = ['gpt', 'novelai', 'google', 'stability'].find(key => enabled[key]);
+    if (provider === 'gpt') return generateGptImage(prompt, {}, signal);
+    if (provider === 'novelai') return generateNovelAiImage(prompt, {}, signal);
+    if (provider === 'google') return generateGoogleImage(prompt, {}, signal);
+    if (provider === 'stability') return generateStabilityImage(prompt, {}, signal);
+    throw new Error('未开启任何生图引擎，请先在 API 设置中启用一个生图平台');
 }
 
 /**
@@ -581,11 +699,12 @@ async function generateImageDispatch(prompt, signal = null) {
 async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null) {
     const settings = Object.assign({}, db.novelAiSettings || {}, overrideSettings);
     const token = settings.token;
-    if (!token) throw new Error('NovelAI Token 未配置');
+    const authMode = settings.authMode || 'bearer';
+    if (!token && authMode !== 'none') throw new Error('NovelAI Token 未配置');
     if (!prompt || !prompt.trim()) throw new Error('提示词不能为空');
 
     // 清理 Token 中可能的特殊字符
-    const cleanToken = token.trim().replace(/[^\x20-\x7E]/g, '');
+    const cleanToken = String(token || '').trim().replace(/[\r\n]/g, '');
 
     const customUrlEnabled = settings.customUrlEnabled || false;
     const customUrl = (settings.customUrl || '').trim();
@@ -602,12 +721,10 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
     const artistTags = settings.artistTags || '';
     const negativePrompt = settings.negativePrompt || '';
 
-    // 拼接最终 prompt：系统基础 Prompt + 画师串 + 用户 prompt
-    const promptParts = [];
-    if (systemPrompt) promptParts.push(systemPrompt);
-    if (artistTags) promptParts.push(artistTags);
-    promptParts.push(prompt);
-    const fullPrompt = promptParts.filter(Boolean).join(', ');
+    // 拼接最终 prompt：系统基础 Prompt + 画师串 + 氛围组 + 用户 prompt
+    const merged = _imageMergePrompt([artistTags, prompt].filter(Boolean).join(', '), 'novelai', systemPrompt, negativePrompt);
+    const fullPrompt = merged.prompt;
+    const fullNegativePrompt = merged.negativePrompt;
 
     console.log('[NovelAI] 最终 Prompt:', fullPrompt);
 
@@ -651,10 +768,10 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
                     use_order: true
                 },
                 v4_negative_prompt: {
-                    caption: { base_caption: negativePrompt, char_captions: [] },
+                    caption: { base_caption: fullNegativePrompt, char_captions: [] },
                     legacy_uc: false
                 },
-                negative_prompt: negativePrompt,
+                negative_prompt: fullNegativePrompt,
                 deliberate_euler_ancestral_bug: false,
                 prefer_brownian: true
             }
@@ -679,7 +796,7 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
                 add_original_image: false,
                 cfg_rescale: 0,
                 noise_schedule: 'native',
-                negative_prompt: negativePrompt
+                negative_prompt: fullNegativePrompt
             }
         };
     }
@@ -688,10 +805,10 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
     let apiUrl = '';
     if (customUrlEnabled && customUrl) {
         apiUrl = customUrl;
-        // 智能拼接端点路径（如果用户只填了 Base URL）
-        if (!apiUrl.includes('/ai/generate-image')) {
-            apiUrl = apiUrl.replace(/\/$/, ''); // 移除末尾斜杠
-            apiUrl += isV4 ? '/ai/generate-image-stream' : '/ai/generate-image';
+        if ((settings.endpointMode || 'auto') !== 'full' && !apiUrl.includes('/ai/generate-image')) {
+            apiUrl = apiUrl.replace(/\/$/, '');
+            const configuredPath = isV4 ? settings.streamPath : settings.generatePath;
+            apiUrl += configuredPath || (isV4 ? '/ai/generate-image-stream' : '/ai/generate-image');
         }
     } else {
         // V4 使用 stream 端点，V3 使用普通端点
@@ -702,12 +819,18 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
 
     console.log('[NovelAI] 发送生图请求:', { apiUrl, model, isV4, width, height, steps, scale, sampler });
 
+    const requestHeaders = { 'Content-Type': 'application/json' };
+    if (authMode === 'bearer' && cleanToken) requestHeaders.Authorization = `Bearer ${cleanToken}`;
+    if (authMode === 'header' && cleanToken) requestHeaders[settings.authHeaderName || 'Authorization'] = cleanToken;
+    if (settings.extraHeaders && typeof settings.extraHeaders === 'object') Object.assign(requestHeaders, settings.extraHeaders);
+    if (authMode === 'query' && cleanToken) {
+        const separator = apiUrl.includes('?') ? '&' : '?';
+        apiUrl += `${separator}${encodeURIComponent(settings.authQueryName || 'key')}=${encodeURIComponent(cleanToken)}`;
+    }
+
     const response = await fetch(apiUrl, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${cleanToken}`
-        },
+        headers: requestHeaders,
         body: JSON.stringify(requestBody),
         signal: signal
     });
@@ -715,17 +838,7 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
     console.log(`[NovelAI] 响应状态: ${response.status}, Content-Type: ${response.headers.get('content-type')}`);
 
     if (!response.ok) {
-        let errDetail = '';
-        try {
-            const errText = await response.text();
-            try { const errObj = JSON.parse(errText); errDetail = errObj.message || errObj.error || errText.substring(0, 150); }
-            catch (_) { errDetail = errText.substring(0, 150); }
-        } catch (_) {}
-        console.error(`[NovelAI] API 错误 (${response.status}): ${errDetail}`);
-        if (response.status === 401) throw new Error('Token 无效或已过期');
-        if (response.status === 402) throw new Error('Anlas 额度不足');
-        if (response.status === 429) throw new Error('请求过于频繁，请稍后再试');
-        throw new Error(`API 返回错误 (${response.status}): ${errDetail}`);
+        throw await _imageReadError(response, 'NovelAI');
     }
 
     // === 根据响应 Content-Type 选择解析策略 ===
@@ -741,34 +854,18 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
         // 从后往前扫描，找到最终的图片数据
         for (let i = lines.length - 1; i >= 0; i--) {
             const line = lines[i].trim();
-            if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
+            if (!line.startsWith('data:') || /^data:\s*\[DONE\]$/.test(line)) continue;
 
-            const payload = line.substring(6);
+            const payload = line.substring(5).trim();
             try {
                 const obj = JSON.parse(payload);
-                // 检查是否有 URL 字段
-                if (obj.output && Array.isArray(obj.output) && obj.output[0] && obj.output[0].url) {
-                    imageDataUrl = obj.output[0].url; break;
-                }
-                if (obj.url) { imageDataUrl = obj.url; break; }
-                // 检查 base64 字段
-                const b64 = (obj.event_type === 'final' && obj.image) ? obj.image : (obj.data || obj.image);
-                if (b64) {
-                    imageDataUrl = _nai_resolveBase64Image(b64);
-                    if (!imageDataUrl) {
-                        // 可能是 zip 的 base64，解码后提取
-                        const raw = atob(b64);
-                        const bytes = new Uint8Array(raw.length);
-                        for (let j = 0; j < raw.length; j++) bytes[j] = raw.charCodeAt(j);
-                        imageDataUrl = await _nai_extractPngFromZipBlob(new Blob([bytes]));
-                    }
-                    break;
-                }
+                imageDataUrl = await _image_extractFromJson(obj);
+                if (imageDataUrl) break;
             } catch (e) {
                 // 非 JSON，当成原始 base64 尝试
                 if (payload.length > 100) {
-                    imageDataUrl = _nai_resolveBase64Image(payload);
-                    break;
+                    imageDataUrl = await _image_resolveCandidate(payload);
+                    if (imageDataUrl) break;
                 }
             }
         }
@@ -782,16 +879,7 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
         // === JSON 响应（某些代理会返回 JSON） ===
         console.log('[NovelAI] 解析 JSON 响应...');
         const jsonData = await response.json();
-        if (jsonData.output && jsonData.output[0] && jsonData.output[0].url) {
-            imageDataUrl = jsonData.output[0].url;
-        } else if (jsonData.url) {
-            imageDataUrl = jsonData.url;
-        } else {
-            const b64 = jsonData.image || jsonData.data;
-            if (b64) {
-                imageDataUrl = _nai_resolveBase64Image(b64);
-            }
-        }
+        imageDataUrl = await _image_extractFromJson(jsonData);
         if (!imageDataUrl) {
             throw new Error('JSON 响应中未找到图片数据');
         }
@@ -800,8 +888,17 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
         // === 默认当 ZIP / 二进制 Blob 处理（V3 常见）===
         console.log('[NovelAI] 解析二进制/ZIP 响应...');
         const blob = await response.blob();
-        if (blob.type && blob.type.startsWith('image/')) {
-            imageDataUrl = await _nai_blobToDataUrl(blob);
+        const head = new Uint8Array(await blob.slice(0, 12).arrayBuffer());
+        const looksLikeImage = (head[0] === 0x89 && head[1] === 0x50)
+            || (head[0] === 0xff && head[1] === 0xd8)
+            || (head[0] === 0x52 && head[1] === 0x49 && head[2] === 0x46 && head[3] === 0x46);
+        if ((blob.type && blob.type.startsWith('image/')) || looksLikeImage) {
+            let typedBlob = blob;
+            if (!blob.type.startsWith('image/')) {
+                const mime = head[0] === 0xff ? 'image/jpeg' : (head[0] === 0x52 ? 'image/webp' : 'image/png');
+                typedBlob = new Blob([await blob.arrayBuffer()], { type: mime });
+            }
+            imageDataUrl = await _nai_blobToDataUrl(typedBlob);
         } else {
             imageDataUrl = await _nai_extractPngFromZipBlob(blob);
         }
@@ -824,7 +921,86 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
     }
 
     console.log('[NovelAI] ✅ 生图成功');
-    return { imageUrl: imageDataUrl };
+    return { imageUrl: imageDataUrl, provider: 'novelai', model, size: resolution, seed: commonSeed, atmosphere: merged.atmosphere };
+}
+
+/** 使用 Google Gemini 原生图片模型生成图片。 */
+async function generateGoogleImage(prompt, overrideSettings = {}, signal = null) {
+    const settings = Object.assign({}, db.googleImageSettings || {}, overrideSettings);
+    const key = String(settings.key || '').trim();
+    const baseUrl = String(settings.url || 'https://generativelanguage.googleapis.com').trim();
+    const model = settings.model || 'gemini-3.1-flash-image';
+    if (!key) throw new Error('Google 生图 API Key 未配置');
+    if (!prompt || !prompt.trim()) throw new Error('提示词不能为空');
+
+    const merged = _imageMergePrompt(prompt.trim(), 'google', settings.systemPrompt || '', settings.negativePrompt || '');
+    let finalPrompt = merged.prompt;
+    if (merged.negativePrompt) finalPrompt += `\n\n画面中不要出现：${merged.negativePrompt}`;
+    const endpoint = /:generateContent(?:\?|$)/.test(baseUrl)
+        ? baseUrl
+        : `${baseUrl.replace(/\/$/, '')}/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+    const generationConfig = { responseModalities: ['TEXT', 'IMAGE'] };
+    if (settings.aspectRatio) generationConfig.imageConfig = { aspectRatio: settings.aspectRatio };
+
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: finalPrompt }] }], generationConfig }),
+        signal
+    });
+    if (!response.ok) throw await _imageReadError(response, 'Google 生图');
+    const data = await response.json();
+    const parts = data?.candidates?.flatMap(candidate => candidate?.content?.parts || []) || [];
+    const imagePart = parts.find(part => part.inlineData?.data || part.inline_data?.data);
+    const inline = imagePart?.inlineData || imagePart?.inline_data;
+    if (!inline?.data) {
+        const reason = data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason;
+        throw new Error(reason ? `Google 未返回图片：${reason}` : 'Google 响应中未找到图片数据');
+    }
+    const mimeType = inline.mimeType || inline.mime_type || 'image/png';
+    return {
+        imageUrl: `data:${mimeType};base64,${inline.data}`,
+        provider: 'google', model, size: settings.aspectRatio || '', atmosphere: merged.atmosphere
+    };
+}
+
+/** 使用 Stability Stable Image 接口生成图片。 */
+async function generateStabilityImage(prompt, overrideSettings = {}, signal = null) {
+    const settings = Object.assign({}, db.stabilityImageSettings || {}, overrideSettings);
+    const key = String(settings.key || '').trim();
+    const baseUrl = String(settings.url || 'https://api.stability.ai').trim();
+    const service = settings.service === 'ultra' ? 'ultra' : 'core';
+    if (!key) throw new Error('Stability API Key 未配置');
+    if (!prompt || !prompt.trim()) throw new Error('提示词不能为空');
+
+    const merged = _imageMergePrompt(prompt.trim(), 'stability', settings.systemPrompt || '', settings.negativePrompt || '');
+    const endpoint = /\/stable-image\/generate\/(?:core|ultra)(?:\?|$)/.test(baseUrl)
+        ? baseUrl
+        : `${baseUrl.replace(/\/$/, '')}/v2beta/stable-image/generate/${service}`;
+    const form = new FormData();
+    form.append('prompt', merged.prompt);
+    if (merged.negativePrompt) form.append('negative_prompt', merged.negativePrompt);
+    form.append('output_format', settings.outputFormat || 'png');
+    if (settings.aspectRatio) form.append('aspect_ratio', settings.aspectRatio);
+    if (settings.stylePreset) form.append('style_preset', settings.stylePreset);
+    if (settings.seed !== '' && settings.seed != null) form.append('seed', String(settings.seed));
+
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, Accept: 'image/*' },
+        body: form,
+        signal
+    });
+    if (!response.ok) throw await _imageReadError(response, 'Stability');
+    const contentType = response.headers.get('content-type') || '';
+    let imageUrl;
+    if (contentType.includes('application/json')) imageUrl = await _image_extractFromJson(await response.json());
+    else imageUrl = await _nai_blobToDataUrl(await response.blob());
+    if (!imageUrl) throw new Error('Stability 响应中未找到图片数据');
+    return {
+        imageUrl, provider: 'stability', model: `stable-image-${service}`,
+        size: settings.aspectRatio || '', seed: settings.seed, atmosphere: merged.atmosphere
+    };
 }
 
 /**
@@ -853,6 +1029,8 @@ window.playSound = (typeof playSound !== 'undefined') ? playSound : null; // 防
 window.generateGptImage = generateGptImage;
 window.generateImageDispatch = generateImageDispatch;
 window.generateNovelAiImage = generateNovelAiImage;
+window.generateGoogleImage = generateGoogleImage;
+window.generateStabilityImage = generateStabilityImage;
 window.novelAiGenerate = novelAiGenerate;
 window.writeOvoPngMetadata = writeOvoPngMetadata;
 window.readOvoPngMetadata = readOvoPngMetadata;

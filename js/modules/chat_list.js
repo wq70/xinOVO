@@ -448,9 +448,16 @@ function renderChatList() {
             } else {
                 invisibleRegex = /\[.*?(?:接收|退回).*?的转账\]|\[.*?更新状态为：.*?\]|\[.*?已接收礼物\]|\[system:.*?\]|\[.*?邀请.*?加入了群聊\]|\[.*?修改群名为：.*?\]|\[system-display:.*?\]|\[avatar-action:.*?\]/;
             }
-            const visibleHistory = chat.history.filter(msg => !invisibleRegex.test(msg.content));
-            if (visibleHistory.length > 0) {
-                const lastMsg = visibleHistory[visibleHistory.length - 1];
+            // 只从末尾查找首条可见消息；旧实现会为每个会话过滤并复制全部历史。
+            let lastMsg = null;
+            for (let historyIndex = chat.history.length - 1; historyIndex >= 0; historyIndex--) {
+                const candidate = chat.history[historyIndex];
+                if (!invisibleRegex.test(candidate.content)) {
+                    lastMsg = candidate;
+                    break;
+                }
+            }
+            if (lastMsg) {
                 const urlRegex = /^(https?:\/\/[^\s]+\.(?:jpg|jpeg|png|gif|webp|bmp|svg)|data:image\/[a-z]+;base64,)/i;
                 const imageRecogRegex = /\[.*?发来了一张图片：\]/
                 const voiceRegex = /\[.*?的语音：.*?\]/;

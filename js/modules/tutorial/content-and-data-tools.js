@@ -94,25 +94,34 @@ function renderTutorialContent() {
         return el;
     };
 
+    const setActionItemText = (element, text) => {
+        const label = isModern ? element.querySelector('span') : null;
+        if (label) label.textContent = text;
+        else element.textContent = text;
+    };
+
     const backupDataBtn = createActionItem('button', '备份数据', 'btn btn-primary');
     backupDataBtn.disabled = loadingBtn;
+    let activeBackupController = null;
 
     backupDataBtn.addEventListener('click', async () => {
         if(loadingBtn){
+            if (activeBackupController) {
+                activeBackupController.abort();
+                setActionItemText(backupDataBtn, '正在取消…');
+            }
             return
         }
         loadingBtn = true
+        activeBackupController = new AbortController();
+        backupDataBtn.disabled = false;
+        setActionItemText(backupDataBtn, '取消备份');
         try {
             showToast('正在准备导出数据...');
-
-            const fullBackupData = await createFullBackupData();
-
-            const jsonString = JSON.stringify(fullBackupData);
-            const dataBlob = new Blob([jsonString]);
-
-            const compressionStream = new CompressionStream('gzip');
-            const compressedStream = dataBlob.stream().pipeThrough(compressionStream);
-            const compressedBlob = await new Response(compressedStream, { headers: { 'Content-Type': 'application/octet-stream' } }).blob();
+            await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+            const compressedBlob = await createCompressedBackupBlob({
+                signal: activeBackupController.signal
+            });
 
             const url = URL.createObjectURL(compressedBlob);
             const a = document.createElement('a');
@@ -124,13 +133,20 @@ function renderTutorialContent() {
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            loadingBtn = false
-            showToast('聊天记录导出成功');
+            // 移动浏览器可能会延迟读取 Blob，不能在 click 后立即释放。
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+            showToast(`聊天记录导出成功（${formatBytes(compressedBlob.size)}）`);
         }catch (e){
-            loadingBtn = false
-            showToast(`导出失败, 发生错误: ${e.message}`);
-            console.error('导出错误详情:', e);
+            if (e && e.name === 'AbortError') showToast('已取消备份');
+            else {
+                showToast(`导出失败, 发生错误: ${e.message}`);
+                console.error('导出错误详情:', e);
+            }
+        } finally {
+            loadingBtn = false;
+            activeBackupController = null;
+            backupDataBtn.disabled = false;
+            setActionItemText(backupDataBtn, '备份数据');
         }
     });
 
@@ -208,15 +224,16 @@ function renderTutorialContent() {
         document.getElementById(partialExportModalId).style.display = 'none';
         if (loadingBtn) return;
         loadingBtn = true;
+        const exportButton = document.getElementById('partial-export-do-btn');
+        const originalText = exportButton ? exportButton.textContent : '';
+        if (exportButton) {
+            exportButton.disabled = true;
+            exportButton.textContent = '导出中…';
+        }
         try {
             showToast('正在准备分类导出...');
-            const partialData = await createPartialBackupData(selected);
-            const jsonString = JSON.stringify(partialData);
-            const dataBlob = new Blob([jsonString]);
-
-            const compressionStream = new CompressionStream('gzip');
-            const compressedStream = dataBlob.stream().pipeThrough(compressionStream);
-            const compressedBlob = await new Response(compressedStream, { headers: { 'Content-Type': 'application/octet-stream' } }).blob();
+            await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+            const compressedBlob = await createCompressedBackupBlob({ selectedKeys: selected });
 
             const url = URL.createObjectURL(compressedBlob);
             const a = document.createElement('a');
@@ -228,13 +245,17 @@ function renderTutorialContent() {
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            loadingBtn = false;
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
             showToast('分类导出成功');
         } catch (e) {
-            loadingBtn = false;
             showToast(`分类导出失败: ${e.message}`);
             console.error('分类导出错误:', e);
+        } finally {
+            loadingBtn = false;
+            if (exportButton) {
+                exportButton.disabled = false;
+                exportButton.textContent = originalText;
+            }
         }
     });
 
@@ -879,14 +900,19 @@ function renderTutorialContent() {
         if(confirmed){
             try {
                 showToast('正在导入数据，请稍候...');
-
-                const decompressionStream = new DecompressionStream('gzip');
-                const decompressedStream = file.stream().pipeThrough(decompressionStream);
-                const jsonString = await new Response(decompressedStream).text();
-
-                let data = JSON.parse(jsonString);
-
-                const importResult = await importBackupData(data);
+                const archiveInfo = await inspectBackupArchive(file);
+                let importResult;
+                if (archiveInfo.stream) {
+                    importResult = await importStreamBackupData(file, {
+                        onProgress: message => showToast(message)
+                    });
+                } else {
+                    const decompressionStream = new DecompressionStream('gzip');
+                    const decompressedStream = file.stream().pipeThrough(decompressionStream);
+                    const jsonString = await new Response(decompressedStream).text();
+                    const data = JSON.parse(jsonString);
+                    importResult = await importBackupData(data);
+                }
 
                 if (importResult.success) {
                     showToast(`数据导入成功！${importResult.message} 应用即将刷新。`);
@@ -1084,11 +1110,18 @@ function renderTutorialContent() {
             if (!file) return;
             if (loadingBtn) return;
             try {
-                const decompressionStream = new DecompressionStream('gzip');
-                const decompressedStream = file.stream().pipeThrough(decompressionStream);
-                const jsonString = await new Response(decompressedStream).text();
-                const data = JSON.parse(jsonString);
-                if (!data._exportTables || !Array.isArray(data._exportTables)) {
+                const archiveInfo = await inspectBackupArchive(file);
+                let legacyData = null;
+                const exportTables = archiveInfo.stream
+                    ? archiveInfo.header.exportTables
+                    : await (async () => {
+                        const decompressionStream = new DecompressionStream('gzip');
+                        const decompressedStream = file.stream().pipeThrough(decompressionStream);
+                        const jsonString = await new Response(decompressedStream).text();
+                        legacyData = JSON.parse(jsonString);
+                        return legacyData._exportTables;
+                    })();
+                if (!exportTables || !Array.isArray(exportTables)) {
                     showToast('请选择由「分类导出」生成的文件（.ee）');
                     event.target.value = null;
                     return;
@@ -1099,7 +1132,12 @@ function renderTutorialContent() {
                     return;
                 }
                 showToast('正在分类导入...');
-                const result = await importPartialBackupData(data);
+                const result = archiveInfo.stream
+                    ? await importStreamBackupData(file, {
+                        requirePartial: true,
+                        onProgress: message => showToast(message)
+                    })
+                    : await importPartialBackupData(legacyData);
                 if (result.success) {
                     showToast(result.message + ' 应用即将刷新。');
                     setTimeout(() => window.location.reload(), 1500);

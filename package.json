@@ -5,7 +5,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "check": "node scripts/verify.mjs",
-    "test:mcp": "node scripts/test-mcp.mjs"
+    "test:mcp": "node scripts/test-mcp.mjs",
+    "test:media": "node scripts/test-media-providers.mjs"
   },
   "devDependencies": {
     "parse5": "8.0.1"

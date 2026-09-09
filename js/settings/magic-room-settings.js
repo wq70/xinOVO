@@ -1,3 +1,5 @@
+const saveMagicRoomSettings = () => saveGlobalSettings(['magicRoom']);
+
 function setupMagicRoomApp() {
     const app = document.getElementById('magic-room-screen');
     if (!app) return;
@@ -129,7 +131,7 @@ B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角�
                 db.magicRoom.presets.push(presetObj);
             }
             
-            await saveData();
+            await saveMagicRoomSettings();
             populateMagicRoomPresets();
             showToast('预设已保存');
         });
@@ -161,7 +163,7 @@ B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角�
                         const newName = prompt('输入新名称：', p.name);
                         if (!newName || !newName.trim() || newName.trim() === p.name) return;
                         db.magicRoom.presets[idx].name = newName.trim();
-                        await saveData();
+                        await saveMagicRoomSettings();
                         populateMagicRoomPresets();
                         managePresetsBtn.click(); // re-render
                     };
@@ -172,7 +174,7 @@ B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角�
                     delBtn.onclick = async () => {
                         if (!confirm('确定删除预设：' + p.name + '？')) return;
                         db.magicRoom.presets.splice(idx, 1);
-                        await saveData();
+                        await saveMagicRoomSettings();
                         populateMagicRoomPresets();
                         managePresetsBtn.click();
                     };
@@ -214,7 +216,7 @@ B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角�
                     if (idx >= 0) db.magicRoom.presets[idx] = p;
                     else db.magicRoom.presets.push(p);
                 });
-                await saveData();
+                await saveMagicRoomSettings();
                 populateMagicRoomPresets();
                 showToast(`成功导入 ${data.length} 个预设`);
             } else {
@@ -277,7 +279,7 @@ B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角�
         db.magicRoom.sysNotifCustomServer = sysnotifCustomSrv ? sysnotifCustomSrv.checked : false;
         db.magicRoom.sysNotifServerUrl    = sysnotifSrvUrl ? sysnotifSrvUrl.value.trim() : '';
         db.magicRoom.sysNotifServerKey    = sysnotifSrvKey ? sysnotifSrvKey.value.trim() : '';
-        await saveData();
+        await saveMagicRoomSettings();
         showToast('魔法屋设置已保存！');
     });
 

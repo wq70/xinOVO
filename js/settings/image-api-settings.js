@@ -1,3 +1,26 @@
+const saveImageApiGlobalSettings = () => saveGlobalSettings([
+    'novelAiSettings', 'novelAiPresets', 'gptImageSettings', 'gptImagePresets',
+    'googleImageSettings', 'stabilityImageSettings', 'activeImageProvider',
+    'imageAtmosphereGroups', 'activeImageAtmosphereId',
+    'autoCompressImage', 'imageGenTimeout'
+]);
+
+function setActiveImageProvider(provider) {
+    const map = {
+        gpt: ['gpt-image-enabled', 'gptImageSettings'],
+        novelai: ['novelai-enabled', 'novelAiSettings'],
+        google: ['google-image-enabled', 'googleImageSettings'],
+        stability: ['stability-image-enabled', 'stabilityImageSettings']
+    };
+    db.activeImageProvider = provider || '';
+    Object.entries(map).forEach(([key, entry]) => {
+        const active = key === provider;
+        const checkbox = document.getElementById(entry[0]);
+        if (checkbox) checkbox.checked = active;
+        if (db[entry[1]]) db[entry[1]].enabled = active;
+    });
+}
+
 function setupGptImageSettings() {
     const urlEl = document.getElementById('gpt-image-url');
     const keyEl = document.getElementById('gpt-image-key');
@@ -69,7 +92,8 @@ function setupGptImageSettings() {
                 systemPrompt: sysPromptEl ? sysPromptEl.value.trim() : '',
                 negativePrompt: negPromptEl ? negPromptEl.value.trim() : ''
             };
-            await saveData();
+            if (db.gptImageSettings.enabled) setActiveImageProvider('gpt');
+            await saveImageApiGlobalSettings();
             showToast('GPT 生图设置已保存！');
         });
     }
@@ -151,7 +175,7 @@ function setupGptImageSettings() {
     
     function _saveGptPresets(arr) {
         db.gptImagePresets = arr || [];
-        saveData();
+        saveImageApiGlobalSettings();
     }
 
     function populateGptPresets() {
@@ -291,7 +315,8 @@ function setupGptImageSettings() {
     if (exportPresetBtn) exportPresetBtn.addEventListener('click', () => {
         const presets = _getGptPresets();
         if (presets.length === 0) return showToast('暂无预设可导出');
-        const blob = new Blob([JSON.stringify(presets, null, 2)], { type: 'application/json' });
+        const safePresets = presets.map(p => ({ ...p, data: { ...(p.data || {}), key: '' } }));
+        const blob = new Blob([JSON.stringify(safePresets, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -344,7 +369,7 @@ function setupNovelAiSettings() {
         timeoutInput.value = db.imageGenTimeout;
         timeoutInput.addEventListener('change', async (e) => {
             db.imageGenTimeout = parseInt(e.target.value, 10) || 0; // 0代表不限制
-            await saveData();
+            await saveImageApiGlobalSettings();
             showToast('生图超时时间已保存');
         });
     }
@@ -356,11 +381,11 @@ function setupNovelAiSettings() {
         } else {
             autoCompressEl.checked = true; // 默认开启
             db.autoCompressImage = true;
-            if (typeof saveData === 'function') saveData();
+            if (typeof saveGlobalSettings === 'function') saveImageApiGlobalSettings();
         }
         autoCompressEl.addEventListener('change', async (e) => {
             db.autoCompressImage = e.target.checked;
-            if (typeof saveData === 'function') await saveData();
+            if (typeof saveGlobalSettings === 'function') await saveImageApiGlobalSettings();
             showToast('自动压缩生图设置已保存');
         });
     }
@@ -381,7 +406,14 @@ function setupNovelAiSettings() {
     const tokenEl = document.getElementById('novelai-token');
     const customUrlEnabledEl = document.getElementById('novelai-custom-url-enabled');
     const customUrlContainer = document.getElementById('novelai-custom-url-container');
+    const compatibleOptions = document.getElementById('novelai-compatible-options');
     const customUrlEl = document.getElementById('novelai-custom-url');
+    const endpointModeEl = document.getElementById('novelai-endpoint-mode');
+    const authModeEl = document.getElementById('novelai-auth-mode');
+    const generatePathEl = document.getElementById('novelai-generate-path');
+    const streamPathEl = document.getElementById('novelai-stream-path');
+    const authNameEl = document.getElementById('novelai-auth-name');
+    const extraHeadersEl = document.getElementById('novelai-extra-headers');
     const modelEl = document.getElementById('novelai-model');
     const resolutionEl = document.getElementById('novelai-resolution');
     const samplerEl = document.getElementById('novelai-sampler');
@@ -406,6 +438,24 @@ function setupNovelAiSettings() {
     const closeModalBtn = document.getElementById('novelai-close-modal');
     const presetListContainer = document.getElementById('novelai-presets-list');
 
+    const readCompatibleOptions = () => {
+        let extraHeaders = null;
+        const raw = extraHeadersEl?.value.trim();
+        if (raw) {
+            extraHeaders = JSON.parse(raw);
+            if (!extraHeaders || Array.isArray(extraHeaders) || typeof extraHeaders !== 'object') throw new Error('额外请求头必须是 JSON 对象');
+        }
+        const authMode = authModeEl?.value || 'bearer';
+        return {
+            endpointMode: endpointModeEl?.value || 'auto', authMode,
+            generatePath: generatePathEl?.value.trim() || '/ai/generate-image',
+            streamPath: streamPathEl?.value.trim() || '/ai/generate-image-stream',
+            authHeaderName: authMode === 'header' ? (authNameEl?.value.trim() || 'Authorization') : '',
+            authQueryName: authMode === 'query' ? (authNameEl?.value.trim() || 'key') : '',
+            extraHeaders
+        };
+    };
+
     // 加载已保存的设置
     if (db.novelAiSettings) {
         const s = db.novelAiSettings;
@@ -414,8 +464,15 @@ function setupNovelAiSettings() {
         if (customUrlEnabledEl) {
             customUrlEnabledEl.checked = !!s.customUrlEnabled;
             if (customUrlContainer) customUrlContainer.style.display = s.customUrlEnabled ? 'flex' : 'none';
+            if (compatibleOptions) compatibleOptions.style.display = s.customUrlEnabled ? 'block' : 'none';
         }
         if (customUrlEl) customUrlEl.value = s.customUrl || '';
+        if (endpointModeEl) endpointModeEl.value = s.endpointMode || 'auto';
+        if (authModeEl) authModeEl.value = s.authMode || 'bearer';
+        if (generatePathEl) generatePathEl.value = s.generatePath || '/ai/generate-image';
+        if (streamPathEl) streamPathEl.value = s.streamPath || '/ai/generate-image-stream';
+        if (authNameEl) authNameEl.value = s.authHeaderName || s.authQueryName || '';
+        if (extraHeadersEl) extraHeadersEl.value = s.extraHeaders ? JSON.stringify(s.extraHeaders) : '';
         if (modelEl && s.model) modelEl.value = s.model;
         if (resolutionEl && s.resolution) resolutionEl.value = s.resolution;
         if (samplerEl && s.sampler) samplerEl.value = s.sampler;
@@ -453,12 +510,16 @@ function setupNovelAiSettings() {
     if (customUrlEnabledEl && customUrlContainer) {
         customUrlEnabledEl.addEventListener('change', (e) => {
             customUrlContainer.style.display = e.target.checked ? 'flex' : 'none';
+            if (compatibleOptions) compatibleOptions.style.display = e.target.checked ? 'block' : 'none';
         });
     }
 
     // 保存设置
     if (saveBtn) {
         saveBtn?.addEventListener('click', async () => {
+            let compatible;
+            try { compatible = readCompatibleOptions(); }
+            catch (error) { showToast(error.message); return; }
             db.novelAiSettings = {
                 enabled: enabledEl ? enabledEl.checked : false,
                 token: tokenEl ? tokenEl.value.trim() : '',
@@ -471,9 +532,15 @@ function setupNovelAiSettings() {
                 scale: scaleSlider ? parseFloat(scaleSlider.value) : 5,
                 systemPrompt: systemPromptEl ? systemPromptEl.value.trim() : '',
                 artistTags: artistTagsEl ? artistTagsEl.value.trim() : '',
-                negativePrompt: negativePromptEl ? negativePromptEl.value : ''
+                negativePrompt: negativePromptEl ? negativePromptEl.value : '',
+                authMode: db.novelAiSettings?.authMode || 'bearer',
+                endpointMode: db.novelAiSettings?.endpointMode || 'auto',
+                generatePath: db.novelAiSettings?.generatePath || '/ai/generate-image',
+                streamPath: db.novelAiSettings?.streamPath || '/ai/generate-image-stream',
+                ...compatible
             };
-            await saveData();
+            if (db.novelAiSettings.enabled) setActiveImageProvider('novelai');
+            await saveImageApiGlobalSettings();
             showToast('NovelAI 生图设置已保存！');
         });
     }
@@ -482,7 +549,7 @@ function setupNovelAiSettings() {
     if (testBtn) {
         testBtn?.addEventListener('click', async () => {
             const token = tokenEl ? tokenEl.value.trim() : '';
-            if (!token) {
+            if (!token && (authModeEl?.value || 'bearer') !== 'none') {
                 showToast('请先填写 NovelAI API Token');
                 return;
             }
@@ -491,6 +558,7 @@ function setupNovelAiSettings() {
             testBtn.querySelector('.btn-text').textContent = '⏳ 生成中...';
 
             try {
+                const compatible = readCompatibleOptions();
                 const result = await generateNovelAiImage('1girl, upper body, beautiful', {
                     token: token,
                     customUrlEnabled: customUrlEnabledEl ? customUrlEnabledEl.checked : false,
@@ -502,7 +570,8 @@ function setupNovelAiSettings() {
                     scale: scaleSlider ? parseFloat(scaleSlider.value) : 5,
                     systemPrompt: systemPromptEl ? systemPromptEl.value.trim() : '',
                     artistTags: artistTagsEl ? artistTagsEl.value.trim() : '',
-                    negativePrompt: negativePromptEl ? negativePromptEl.value : ''
+                    negativePrompt: negativePromptEl ? negativePromptEl.value : '',
+                    ...compatible
                 });
 
                 if (result && result.imageUrl) {
@@ -538,7 +607,8 @@ function setupNovelAiSettings() {
     
     function _saveNovelAiPresets(arr) {
         db.novelAiPresets = arr || [];
-        saveData();
+        saveImageApiGlobalSettings();
+
     }
 
     function populateNovelAiPresets() {
@@ -568,8 +638,15 @@ function setupNovelAiSettings() {
             if (customUrlEnabledEl && p.data.customUrlEnabled !== undefined) {
                 customUrlEnabledEl.checked = !!p.data.customUrlEnabled;
                 if (customUrlContainer) customUrlContainer.style.display = p.data.customUrlEnabled ? 'flex' : 'none';
+                if (compatibleOptions) compatibleOptions.style.display = p.data.customUrlEnabled ? 'block' : 'none';
             }
             if (customUrlEl && p.data.customUrl !== undefined) customUrlEl.value = p.data.customUrl;
+            if (endpointModeEl) endpointModeEl.value = p.data.endpointMode || 'auto';
+            if (authModeEl) authModeEl.value = p.data.authMode || 'bearer';
+            if (generatePathEl) generatePathEl.value = p.data.generatePath || '/ai/generate-image';
+            if (streamPathEl) streamPathEl.value = p.data.streamPath || '/ai/generate-image-stream';
+            if (authNameEl) authNameEl.value = p.data.authHeaderName || p.data.authQueryName || '';
+            if (extraHeadersEl) extraHeadersEl.value = p.data.extraHeaders ? JSON.stringify(p.data.extraHeaders) : '';
             if (modelEl && p.data.model) modelEl.value = p.data.model;
             if (resolutionEl && p.data.resolution) resolutionEl.value = p.data.resolution;
             if (samplerEl && p.data.sampler) samplerEl.value = p.data.sampler;
@@ -591,6 +668,9 @@ function setupNovelAiSettings() {
 
     if (savePresetBtn) {
         savePresetBtn.addEventListener('click', () => {
+            let compatible;
+            try { compatible = readCompatibleOptions(); }
+            catch (error) { showToast(error.message); return; }
             const data = {
                 token: tokenEl ? tokenEl.value.trim() : '',
                 customUrlEnabled: customUrlEnabledEl ? customUrlEnabledEl.checked : false,
@@ -602,7 +682,8 @@ function setupNovelAiSettings() {
                 scale: scaleSlider ? parseFloat(scaleSlider.value) : 5,
                 systemPrompt: systemPromptEl ? systemPromptEl.value.trim() : '',
                 artistTags: artistTagsEl ? artistTagsEl.value.trim() : '',
-                negativePrompt: negativePromptEl ? negativePromptEl.value : ''
+                negativePrompt: negativePromptEl ? negativePromptEl.value : '',
+                ...compatible
             };
             
             const name = prompt('请输入预设名称（将覆盖同名预设）：');
@@ -694,7 +775,8 @@ function setupNovelAiSettings() {
         exportPresetBtn.addEventListener('click', () => {
             const presets = _getNovelAiPresets();
             if (presets.length === 0) return showToast('暂无预设可导出');
-            const blob = new Blob([JSON.stringify(presets, null, 2)], { type: 'application/json' });
+            const safePresets = presets.map(p => ({ ...p, data: { ...(p.data || {}), token: '' } }));
+            const blob = new Blob([JSON.stringify(safePresets, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -740,5 +822,224 @@ function setupNovelAiSettings() {
             inp.click();
         });
     }
+}
+
+function setupAdditionalImageProviders() {
+    const providerDefs = {
+        google: {
+            settingKey: 'googleImageSettings', checkbox: 'google-image-enabled', save: 'google-image-save-btn', test: 'google-image-test-btn',
+            preview: 'google-image-test-preview', image: 'google-image-test-image', generate: 'generateGoogleImage',
+            defaults: { url: 'https://generativelanguage.googleapis.com', model: 'gemini-3.1-flash-image', aspectRatio: '' },
+            fields: { url: 'google-image-url', key: 'google-image-key', model: 'google-image-model', aspectRatio: 'google-image-aspect-ratio', systemPrompt: 'google-image-system-prompt', negativePrompt: 'google-image-negative-prompt' }
+        },
+        stability: {
+            settingKey: 'stabilityImageSettings', checkbox: 'stability-image-enabled', save: 'stability-image-save-btn', test: 'stability-image-test-btn',
+            preview: 'stability-image-test-preview', image: 'stability-image-test-image', generate: 'generateStabilityImage',
+            defaults: { url: 'https://api.stability.ai', service: 'core', aspectRatio: '1:1', outputFormat: 'png', stylePreset: '', seed: '' },
+            fields: { url: 'stability-image-url', key: 'stability-image-key', service: 'stability-image-service', aspectRatio: 'stability-image-aspect-ratio', outputFormat: 'stability-image-output-format', stylePreset: 'stability-image-style-preset', seed: 'stability-image-seed', systemPrompt: 'stability-image-system-prompt', negativePrompt: 'stability-image-negative-prompt' }
+        }
+    };
+
+    const readForm = def => {
+        const value = { enabled: !!document.getElementById(def.checkbox)?.checked };
+        Object.entries(def.fields).forEach(([key, id]) => { value[key] = document.getElementById(id)?.value?.trim?.() || ''; });
+        if (value.seed !== undefined && value.seed !== '') value.seed = Math.max(0, Number.parseInt(value.seed, 10) || 0);
+        return value;
+    };
+
+    Object.entries(providerDefs).forEach(([provider, def]) => {
+        const settings = Object.assign({}, def.defaults, db[def.settingKey] || {});
+        const checkbox = document.getElementById(def.checkbox);
+        if (checkbox) checkbox.checked = !!settings.enabled;
+        Object.entries(def.fields).forEach(([key, id]) => {
+            const element = document.getElementById(id);
+            if (element) element.value = settings[key] ?? def.defaults[key] ?? '';
+        });
+        checkbox?.addEventListener('change', () => {
+            if (checkbox.checked) {
+                setActiveImageProvider(provider);
+                showToast(`已选择 ${provider === 'google' ? 'Google' : 'Stability'} 生图，保存后生效`);
+            }
+        });
+        document.getElementById(def.save)?.addEventListener('click', async () => {
+            const next = readForm(def);
+            if (next.enabled && (!next.url || !next.key)) return showToast('请填写完整的 API 地址和密钥');
+            db[def.settingKey] = next;
+            if (next.enabled) setActiveImageProvider(provider);
+            await saveImageApiGlobalSettings();
+            showToast(`${provider === 'google' ? 'Google' : 'Stability'} 生图设置已保存`);
+        });
+        document.getElementById(def.test)?.addEventListener('click', async () => {
+            const button = document.getElementById(def.test);
+            const next = readForm(def);
+            if (!next.url || !next.key) return showToast('请先填写 API 地址和密钥');
+            const label = button?.querySelector('.btn-text');
+            if (button) button.disabled = true;
+            if (label) label.textContent = '⏳ 生成中...';
+            try {
+                const generator = window[def.generate];
+                if (typeof generator !== 'function') throw new Error('生图服务未加载');
+                const result = await generator('一只坐在窗边的猫，柔和自然光，高质量', next);
+                const preview = document.getElementById(def.preview);
+                const image = document.getElementById(def.image);
+                if (preview && image && result?.imageUrl) {
+                    image.src = result.imageUrl;
+                    image.onclick = () => window.openImageViewer?.(result.imageUrl);
+                    image.style.cursor = 'zoom-in';
+                    preview.style.display = 'block';
+                }
+                showToast('✅ 测试生图成功');
+            } catch (error) {
+                console.error(`[${provider}] 测试失败:`, error);
+                showToast(`❌ ${error.message || '测试失败'}`);
+            } finally {
+                if (button) button.disabled = false;
+                if (label) label.textContent = provider === 'google' ? '🎨 测试 Google 生图' : '🎨 测试 Stability 生图';
+            }
+        });
+    });
+
+    ['gpt', 'novelai'].forEach(provider => {
+        const id = provider === 'gpt' ? 'gpt-image-enabled' : 'novelai-enabled';
+        document.getElementById(id)?.addEventListener('change', event => {
+            if (event.target.checked) setActiveImageProvider(provider);
+        });
+    });
+}
+
+function setupImageAtmosphereGroups() {
+    if (!Array.isArray(db.imageAtmosphereGroups)) db.imageAtmosphereGroups = [];
+    const select = document.getElementById('image-atmosphere-select');
+    const fields = {
+        name: document.getElementById('image-atmosphere-name'),
+        prompt: document.getElementById('image-atmosphere-prompt'),
+        negativePrompt: document.getElementById('image-atmosphere-negative'),
+        gpt: document.getElementById('image-atmosphere-gpt'),
+        novelai: document.getElementById('image-atmosphere-novelai'),
+        google: document.getElementById('image-atmosphere-google'),
+        stability: document.getElementById('image-atmosphere-stability')
+    };
+    if (!select || !fields.name) return;
+
+    const clearFields = () => Object.values(fields).forEach(element => { if (element) element.value = ''; });
+    const renderSelect = () => {
+        select.innerHTML = '<option value="">不使用氛围组</option>';
+        db.imageAtmosphereGroups.forEach(group => {
+            if (!group?.id || !group?.name) return;
+            const option = document.createElement('option');
+            option.value = group.id;
+            option.textContent = group.name;
+            select.appendChild(option);
+        });
+        select.value = db.imageAtmosphereGroups.some(group => group.id === db.activeImageAtmosphereId) ? db.activeImageAtmosphereId : '';
+    };
+    const loadSelected = () => {
+        const group = db.imageAtmosphereGroups.find(item => item.id === select.value);
+        if (!group) return clearFields();
+        fields.name.value = group.name || '';
+        fields.prompt.value = group.prompt || '';
+        fields.negativePrompt.value = group.negativePrompt || '';
+        Object.keys(group.providerPrompts || {}).forEach(key => { if (fields[key]) fields[key].value = group.providerPrompts[key] || ''; });
+    };
+    select.addEventListener('change', async () => {
+        db.activeImageAtmosphereId = select.value || '';
+        loadSelected();
+        await saveImageApiGlobalSettings();
+        showToast(select.value ? '氛围组已应用' : '已停止使用氛围组');
+    });
+    document.getElementById('image-atmosphere-new')?.addEventListener('click', () => {
+        select.value = '';
+        clearFields();
+        fields.name.focus();
+    });
+    document.getElementById('image-atmosphere-save')?.addEventListener('click', async () => {
+        const name = fields.name.value.trim();
+        if (!name) return showToast('请填写氛围组名称');
+        const id = select.value || `atmosphere_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        const group = {
+            id, name, enabled: true, prompt: fields.prompt.value.trim(), negativePrompt: fields.negativePrompt.value.trim(),
+            providerPrompts: {
+                gpt: fields.gpt.value.trim(), novelai: fields.novelai.value.trim(),
+                google: fields.google.value.trim(), stability: fields.stability.value.trim()
+            }
+        };
+        const index = db.imageAtmosphereGroups.findIndex(item => item.id === id);
+        if (index >= 0) db.imageAtmosphereGroups[index] = group;
+        else db.imageAtmosphereGroups.push(group);
+        db.activeImageAtmosphereId = id;
+        await saveImageApiGlobalSettings();
+        renderSelect();
+        loadSelected();
+        showToast(index >= 0 ? '氛围组已更新' : '氛围组已创建并应用');
+    });
+    document.getElementById('image-atmosphere-delete')?.addEventListener('click', async () => {
+        if (!select.value) return showToast('请先选择要删除的氛围组');
+        const decision = typeof showAppConfirmDialog === 'function'
+            ? await showAppConfirmDialog({
+                title: '删除氛围组', message: `确定删除“${fields.name.value || '当前氛围组'}”吗？`,
+                confirmText: '删除', cancelText: '取消', dismissText: ''
+            })
+            : 'cancel';
+        if (decision !== 'confirm') return;
+        db.imageAtmosphereGroups = db.imageAtmosphereGroups.filter(item => item.id !== select.value);
+        db.activeImageAtmosphereId = '';
+        await saveImageApiGlobalSettings();
+        renderSelect();
+        clearFields();
+        showToast('氛围组已删除');
+    });
+    document.getElementById('image-atmosphere-export')?.addEventListener('click', () => {
+        if (!db.imageAtmosphereGroups.length) return showToast('没有可导出的氛围组');
+        const payload = { type: 'ovo-image-atmospheres', items: db.imageAtmosphereGroups };
+        const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `OVO_生图氛围组_${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+        showToast(`已导出 ${db.imageAtmosphereGroups.length} 个氛围组`);
+    });
+    document.getElementById('image-atmosphere-import')?.addEventListener('click', () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json,application/json';
+        input.style.display = 'none';
+        input.addEventListener('change', async () => {
+            const file = input.files?.[0];
+            if (!file) return input.remove();
+            try {
+                const parsed = JSON.parse(await file.text());
+                const items = Array.isArray(parsed) ? parsed : parsed?.items;
+                if (!Array.isArray(items)) throw new Error('文件中没有氛围组列表');
+                let count = 0;
+                items.forEach(item => {
+                    if (!item || typeof item.name !== 'string' || typeof item.prompt !== 'string') return;
+                    const same = db.imageAtmosphereGroups.find(existing => existing.id === item.id || existing.name === item.name);
+                    const copy = JSON.parse(JSON.stringify(item));
+                    if (same) copy.id = `atmosphere_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                    if (!copy.id) copy.id = `atmosphere_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                    copy.name = same ? `${copy.name}（导入）` : copy.name;
+                    copy.enabled = copy.enabled !== false;
+                    db.imageAtmosphereGroups.push(copy);
+                    count++;
+                });
+                if (!count) throw new Error('没有可导入的有效氛围组');
+                await saveImageApiGlobalSettings();
+                renderSelect();
+                showToast(`已导入 ${count} 个氛围组`);
+            } catch (error) {
+                showToast(`导入失败：${error.message}`);
+            } finally {
+                input.remove();
+            }
+        });
+        document.body.appendChild(input);
+        input.click();
+    });
+
+    renderSelect();
+    loadSelected();
 }
 

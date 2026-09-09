@@ -21,6 +21,7 @@
                                 <select id="tts-provider"
                                     style="border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
                                     <option value="minimax" selected>Minimax (海螺)</option>
+                                    <option value="volcengine">火山引擎（豆包语音）</option>
                                 </select>
                                 <span class="kkt-arrow">›</span>
                             </div>
@@ -75,6 +76,16 @@
                                     <span class="kkt-arrow">›</span>
                                 </div>
                             </div>
+                        </div>
+
+                        <div id="volcengine-tts-config-wrap" style="display:none;">
+                            <div class="kkt-item"><div class="kkt-item-label">App ID</div><div class="kkt-item-control"><input type="text" id="volcengine-app-id" autocomplete="off" placeholder="输入 App ID" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">Access Token</div><div class="kkt-item-control"><input type="password" id="volcengine-access-token" autocomplete="new-password" placeholder="输入 Access Token" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">Resource ID</div><div class="kkt-item-control"><input type="text" id="volcengine-resource-id" autocomplete="off" placeholder="例如 seed-tts-2.0" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">默认音色 ID</div><div class="kkt-item-control"><input type="text" id="volcengine-voice-type" autocomplete="off" placeholder="输入 voice_type" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">接口地址</div><div class="kkt-item-control"><input type="text" id="volcengine-tts-url" autocomplete="off" placeholder="https://openspeech.bytedance.com/api/v3/tts/unidirectional" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">音频格式</div><div class="kkt-item-control"><select id="volcengine-audio-format" style="border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="mp3">MP3</option><option value="ogg_opus">Ogg/Opus</option><option value="pcm">PCM</option><option value="wav">WAV</option></select><span class="kkt-arrow">›</span></div></div>
+                            <p style="font-size:12px;color:#999;margin:8px 0 0;line-height:1.45;">角色设置中的自定义音色优先；未填写时使用这里的默认音色 ID。</p>
                         </div>
 
                         <div style="display: flex; gap: 10px; margin-top: 15px;">
@@ -149,6 +160,7 @@
                                     <select id="user-tts-provider"
                                         style="border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
                                         <option value="minimax" selected>Minimax (海螺)</option>
+                                        <option value="volcengine">火山引擎（豆包语音）</option>
                                     </select>
                                     <span class="kkt-arrow">›</span>
                                 </div>
@@ -199,6 +211,14 @@
                                         <span class="kkt-arrow">›</span>
                                     </div>
                                 </div>
+                            </div>
+                            <div id="volcengine-user-tts-config-wrap" style="display:none;">
+                                <div class="kkt-item"><div class="kkt-item-label">App ID</div><div class="kkt-item-control"><input type="text" id="volcengine-user-app-id" autocomplete="off" placeholder="输入 App ID" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                                <div class="kkt-item"><div class="kkt-item-label">Access Token</div><div class="kkt-item-control"><input type="password" id="volcengine-user-access-token" autocomplete="new-password" placeholder="输入 Access Token" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                                <div class="kkt-item"><div class="kkt-item-label">Resource ID</div><div class="kkt-item-control"><input type="text" id="volcengine-user-resource-id" autocomplete="off" placeholder="例如 seed-tts-2.0" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                                <div class="kkt-item"><div class="kkt-item-label">默认音色 ID</div><div class="kkt-item-control"><input type="text" id="volcengine-user-voice-type" autocomplete="off" placeholder="输入 voice_type" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                                <div class="kkt-item"><div class="kkt-item-label">接口地址</div><div class="kkt-item-control"><input type="text" id="volcengine-user-tts-url" autocomplete="off" placeholder="https://openspeech.bytedance.com/api/v3/tts/unidirectional" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                                <div class="kkt-item"><div class="kkt-item-label">音频格式</div><div class="kkt-item-control"><select id="volcengine-user-audio-format" style="border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="mp3">MP3</option><option value="ogg_opus">Ogg/Opus</option><option value="pcm">PCM</option><option value="wav">WAV</option></select><span class="kkt-arrow">›</span></div></div>
                             </div>
                             
                             <p style="font-size: 12px; color: #999; margin-top: 10px;">保存请点击上方「保存 TTS 配置」按钮</p>

@@ -1,9 +1,11 @@
+const saveApiPresetSettings = () => saveGlobalSettings(['apiPresets']);
+
 function _getApiPresets() {
     return db.apiPresets || [];
 }
 function _saveApiPresets(arr) {
     db.apiPresets = arr || [];
-    saveData();
+    saveApiPresetSettings();
 }
 
 function populateApiSelect() {
@@ -259,7 +261,7 @@ function setupSubApiSettings(prefix, dbKey, presetsKey) {
         // 如果全部为空，则清空设置
         if (!urlEl.value.trim() && !keyEl.value.trim() && !modelEl.value) {
             db[dbKey] = {};
-            await saveData();
+            await saveApiPresetSettings();
             showToast(displayName + 'API设置已清空！');
             return;
         }
@@ -270,7 +272,7 @@ function setupSubApiSettings(prefix, dbKey, presetsKey) {
             key: keyEl.value,
             model: modelEl.value
         };
-        await saveData();
+        await saveApiPresetSettings();
         showToast(displayName + 'API设置已保存！');
     });
     
@@ -358,7 +360,7 @@ function setupSubApiPresets(prefix, dbKey, presetsKey) {
         else presets.push(preset);
         
         db[presetsKey] = presets;
-        saveData();
+        saveApiPresetSettings();
         populatePresets();
         showToast('预设已保存');
     });
@@ -394,7 +396,7 @@ function setupSubApiPresets(prefix, dbKey, presetsKey) {
                 if (confirm(`确定删除预设"${preset.name}"吗？`)) {
                     presets.splice(idx, 1);
                     db[presetsKey] = presets;
-                    saveData();
+                    saveApiPresetSettings();
                     renderPresetsList();
                     populatePresets();
                     showToast('预设已删除');
@@ -436,7 +438,7 @@ function setupSubApiPresets(prefix, dbKey, presetsKey) {
                     else db[presetsKey].push(preset);
                 });
                 
-                await saveData();
+                await saveApiPresetSettings();
                 populatePresets();
                 showToast('预设已导入');
             } catch (err) {

@@ -2133,6 +2133,10 @@ function loadSettingsToSidebar() {
         document.getElementById('setting-vc-novelai-enabled').checked = e.vcNovelAiEnabled || false;
         const vcGptDrawEl = document.getElementById('setting-vc-gpt-draw-enabled');
         if (vcGptDrawEl) vcGptDrawEl.checked = e.vcGptDrawEnabled || false;
+        const vcGoogleImageEl = document.getElementById('setting-vc-google-image-enabled');
+        if (vcGoogleImageEl) vcGoogleImageEl.checked = e.vcGoogleImageEnabled || false;
+        const vcStabilityImageEl = document.getElementById('setting-vc-stability-image-enabled');
+        if (vcStabilityImageEl) vcStabilityImageEl.checked = e.vcStabilityImageEnabled || false;
         const saveCallOnInterruptEl = document.getElementById('setting-save-call-on-interrupt');
         if (saveCallOnInterruptEl) saveCallOnInterruptEl.checked = e.saveCallOnInterrupt || false;
 
@@ -2581,6 +2585,10 @@ async function saveSettingsFromSidebar() {
         e.vcNovelAiEnabled = document.getElementById('setting-vc-novelai-enabled').checked;
         const vcGptDrawSave = document.getElementById('setting-vc-gpt-draw-enabled');
         e.vcGptDrawEnabled = vcGptDrawSave ? vcGptDrawSave.checked : false;
+        const vcGoogleImageSave = document.getElementById('setting-vc-google-image-enabled');
+        e.vcGoogleImageEnabled = vcGoogleImageSave ? vcGoogleImageSave.checked : false;
+        const vcStabilityImageSave = document.getElementById('setting-vc-stability-image-enabled');
+        e.vcStabilityImageEnabled = vcStabilityImageSave ? vcStabilityImageSave.checked : false;
         const saveCallOnInterruptSave = document.getElementById('setting-save-call-on-interrupt');
         e.saveCallOnInterrupt = saveCallOnInterruptSave ? saveCallOnInterruptSave.checked : false;
 

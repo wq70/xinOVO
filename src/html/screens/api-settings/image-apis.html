@@ -40,6 +40,70 @@
                         </div>
                     </div>
 
+                    <!-- Google Gemini 图片生成 -->
+                    <div class="kkt-group" style="margin-top:30px;padding-top:20px;border-top:2px solid #eee;">
+                        <div style="margin-bottom:15px;">
+                            <h3 style="margin:0;font-size:16px;color:var(--primary-color);">Google Gemini 生图 API</h3>
+                            <p style="font-size:12px;color:#999;margin:5px 0 0;">使用 Google 官方 Gemini 图片模型生成图片</p>
+                        </div>
+                        <div class="kkt-item"><div class="kkt-item-label">启用 Google 生图</div><div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="google-image-enabled"><span class="kkt-slider"></span></label></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">API 地址</div><div class="kkt-item-control"><input type="text" id="google-image-url" autocomplete="off" placeholder="https://generativelanguage.googleapis.com" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">API Key</div><div class="kkt-item-control"><input type="password" id="google-image-key" autocomplete="new-password" placeholder="输入 Google API Key" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">模型</div><div class="kkt-item-control"><input type="text" id="google-image-model" autocomplete="off" placeholder="gemini-3.1-flash-image" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">画面比例</div><div class="kkt-item-control"><select id="google-image-aspect-ratio" style="border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="">由模型决定</option><option value="1:1">1:1</option><option value="3:4">3:4</option><option value="4:3">4:3</option><option value="9:16">9:16</option><option value="16:9">16:9</option></select><span class="kkt-arrow">›</span></div></div>
+                        <div class="kkt-item" style="flex-direction:column;align-items:stretch;padding-bottom:15px;"><div class="kkt-item-label" style="margin-bottom:8px;">系统附加词</div><textarea id="google-image-system-prompt" rows="2" placeholder="自动添加到所有 Google 生图请求" style="width:100%;padding:8px;border:1px solid #e0e0e0;border-radius:8px;resize:vertical;font-size:13px;box-sizing:border-box;"></textarea></div>
+                        <div class="kkt-item" style="flex-direction:column;align-items:stretch;padding-bottom:15px;"><div class="kkt-item-label" style="margin-bottom:8px;">避免内容</div><textarea id="google-image-negative-prompt" rows="2" placeholder="不希望画面出现的内容" style="width:100%;padding:8px;border:1px solid #e0e0e0;border-radius:8px;resize:vertical;font-size:13px;box-sizing:border-box;"></textarea></div>
+                        <button type="button" class="btn btn-primary" id="google-image-save-btn" style="margin-top:10px;width:100%;">保存 Google 生图设置</button>
+                        <button type="button" class="btn btn-secondary" id="google-image-test-btn" style="margin-top:8px;width:100%;"><span class="btn-text">🎨 测试 Google 生图</span><div class="spinner"></div></button>
+                        <div id="google-image-test-preview" style="display:none;margin-top:15px;text-align:center;"><img id="google-image-test-image" alt="Google 生图测试结果" style="max-width:100%;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.15);"></div>
+                    </div>
+
+                    <!-- Stability 图片生成 -->
+                    <div class="kkt-group" style="margin-top:30px;padding-top:20px;border-top:2px solid #eee;">
+                        <div style="margin-bottom:15px;">
+                            <h3 style="margin:0;font-size:16px;color:var(--primary-color);">Stability AI 生图 API</h3>
+                            <p style="font-size:12px;color:#999;margin:5px 0 0;">使用 Stability 官方 Stable Image 接口</p>
+                        </div>
+                        <div class="kkt-item"><div class="kkt-item-label">启用 Stability 生图</div><div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="stability-image-enabled"><span class="kkt-slider"></span></label></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">API 地址</div><div class="kkt-item-control"><input type="text" id="stability-image-url" autocomplete="off" placeholder="https://api.stability.ai" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">API Key</div><div class="kkt-item-control"><input type="password" id="stability-image-key" autocomplete="new-password" placeholder="输入 Stability API Key" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">生成服务</div><div class="kkt-item-control"><select id="stability-image-service" style="border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="core">Stable Image Core</option><option value="ultra">Stable Image Ultra</option></select><span class="kkt-arrow">›</span></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">画面比例</div><div class="kkt-item-control"><select id="stability-image-aspect-ratio" style="border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="1:1">1:1</option><option value="3:4">3:4</option><option value="4:3">4:3</option><option value="9:16">9:16</option><option value="16:9">16:9</option><option value="2:3">2:3</option><option value="3:2">3:2</option><option value="21:9">21:9</option></select><span class="kkt-arrow">›</span></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">输出格式</div><div class="kkt-item-control"><select id="stability-image-output-format" style="border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="png">PNG</option><option value="jpeg">JPEG</option><option value="webp">WebP</option></select><span class="kkt-arrow">›</span></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">风格预设</div><div class="kkt-item-control"><input type="text" id="stability-image-style-preset" autocomplete="off" placeholder="可选" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">Seed</div><div class="kkt-item-control"><input type="number" id="stability-image-seed" min="0" step="1" placeholder="随机" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                        <div class="kkt-item" style="flex-direction:column;align-items:stretch;padding-bottom:15px;"><div class="kkt-item-label" style="margin-bottom:8px;">系统附加词</div><textarea id="stability-image-system-prompt" rows="2" placeholder="自动添加到所有 Stability 生图请求" style="width:100%;padding:8px;border:1px solid #e0e0e0;border-radius:8px;resize:vertical;font-size:13px;box-sizing:border-box;"></textarea></div>
+                        <div class="kkt-item" style="flex-direction:column;align-items:stretch;padding-bottom:15px;"><div class="kkt-item-label" style="margin-bottom:8px;">负面提示词</div><textarea id="stability-image-negative-prompt" rows="2" placeholder="不希望画面出现的内容" style="width:100%;padding:8px;border:1px solid #e0e0e0;border-radius:8px;resize:vertical;font-size:13px;box-sizing:border-box;"></textarea></div>
+                        <button type="button" class="btn btn-primary" id="stability-image-save-btn" style="margin-top:10px;width:100%;">保存 Stability 生图设置</button>
+                        <button type="button" class="btn btn-secondary" id="stability-image-test-btn" style="margin-top:8px;width:100%;"><span class="btn-text">🎨 测试 Stability 生图</span><div class="spinner"></div></button>
+                        <div id="stability-image-test-preview" style="display:none;margin-top:15px;text-align:center;"><img id="stability-image-test-image" alt="Stability 生图测试结果" style="max-width:100%;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.15);"></div>
+                    </div>
+
+                    <!-- 跨平台生图氛围组 -->
+                    <div class="kkt-group" style="margin-top:30px;padding-top:20px;border-top:2px solid #eee;">
+                        <div style="margin-bottom:15px;">
+                            <h3 style="margin:0;font-size:16px;color:var(--primary-color);">生图氛围组</h3>
+                            <p style="font-size:12px;color:#999;margin:5px 0 0;">当前氛围会自动应用到 GPT、NovelAI、Google 和 Stability</p>
+                        </div>
+                        <div class="kkt-item"><div class="kkt-item-label">当前氛围</div><div class="kkt-item-control" style="flex:1;min-width:0;"><select id="image-atmosphere-select" style="width:100%;border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="">不使用氛围组</option></select><span class="kkt-arrow">›</span></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">名称</div><div class="kkt-item-control"><input type="text" id="image-atmosphere-name" maxlength="50" placeholder="例如：雨夜电影感" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                        <div class="kkt-item" style="flex-direction:column;align-items:stretch;padding-bottom:15px;"><div class="kkt-item-label" style="margin-bottom:8px;">通用氛围描述</div><textarea id="image-atmosphere-prompt" rows="3" placeholder="场景、时间、天气、光线、色彩、情绪、构图、镜头和质感" style="width:100%;padding:8px;border:1px solid #e0e0e0;border-radius:8px;resize:vertical;font-size:13px;box-sizing:border-box;"></textarea></div>
+                        <div class="kkt-item" style="flex-direction:column;align-items:stretch;padding-bottom:15px;"><div class="kkt-item-label" style="margin-bottom:8px;">通用负面限制</div><textarea id="image-atmosphere-negative" rows="2" placeholder="不希望出现的内容" style="width:100%;padding:8px;border:1px solid #e0e0e0;border-radius:8px;resize:vertical;font-size:13px;box-sizing:border-box;"></textarea></div>
+                        <details style="margin-top:8px;"><summary style="font-size:13px;color:#666;cursor:pointer;padding:8px 0;">平台专属补充词</summary>
+                            <div class="kkt-item"><div class="kkt-item-label">GPT</div><div class="kkt-item-control"><input id="image-atmosphere-gpt" type="text" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">NovelAI</div><div class="kkt-item-control"><input id="image-atmosphere-novelai" type="text" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">Google</div><div class="kkt-item-control"><input id="image-atmosphere-google" type="text" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">Stability</div><div class="kkt-item-control"><input id="image-atmosphere-stability" type="text" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                        </details>
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px;">
+                            <button type="button" id="image-atmosphere-new" class="btn btn-small" style="flex:1;min-width:68px;">新建</button>
+                            <button type="button" id="image-atmosphere-save" class="btn btn-primary btn-small" style="flex:1;min-width:68px;">保存</button>
+                            <button type="button" id="image-atmosphere-delete" class="btn btn-danger btn-small" style="flex:1;min-width:68px;">删除</button>
+                            <button type="button" id="image-atmosphere-import" class="btn btn-small" style="flex:1;min-width:68px;">导入</button>
+                            <button type="button" id="image-atmosphere-export" class="btn btn-small" style="flex:1;min-width:68px;">导出</button>
+                        </div>
+                    </div>
+
                     <!-- 副API 6: 表情包识图专用 API -->
                     <div class="kkt-group collapsible-section" style="margin-top: 30px; padding-top: 0; border-top: 2px solid #eee;">
                         <div class="collapsible-header" style="padding: 15px 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" onclick="this.parentElement.classList.toggle('open')">
@@ -378,6 +442,14 @@
                                     placeholder="https://..."
                                     style="text-align:right; border:none; background:transparent; width: 100%;">
                             </div>
+                        </div>
+                        <div id="novelai-compatible-options" style="display:none;">
+                            <div class="kkt-item"><div class="kkt-item-label">地址类型</div><div class="kkt-item-control"><select id="novelai-endpoint-mode" style="border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="auto">基础地址（自动拼接）</option><option value="full">完整生成地址</option></select><span class="kkt-arrow">›</span></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">鉴权方式</div><div class="kkt-item-control"><select id="novelai-auth-mode" style="border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="bearer">Bearer Token</option><option value="header">自定义请求头</option><option value="query">查询参数</option><option value="none">无需鉴权</option></select><span class="kkt-arrow">›</span></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">普通生成路径</div><div class="kkt-item-control"><input type="text" id="novelai-generate-path" placeholder="/ai/generate-image" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">流式生成路径</div><div class="kkt-item-control"><input type="text" id="novelai-stream-path" placeholder="/ai/generate-image-stream" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">自定义鉴权名称</div><div class="kkt-item-control"><input type="text" id="novelai-auth-name" placeholder="Authorization 或 key" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                            <div class="kkt-item" style="flex-direction:column;align-items:stretch;padding-bottom:15px;"><div class="kkt-item-label" style="margin-bottom:8px;">额外请求头 JSON</div><textarea id="novelai-extra-headers" rows="2" placeholder='例如：{"X-Custom-Key":"value"}' style="width:100%;padding:8px;border:1px solid #e0e0e0;border-radius:8px;resize:vertical;font-size:13px;box-sizing:border-box;"></textarea></div>
                         </div>
 
                         <div class="kkt-item" style="flex-direction: column; align-items: stretch; padding-bottom: 15px;">

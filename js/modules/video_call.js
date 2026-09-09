@@ -948,12 +948,14 @@ const VideoCallModule = {
         }
 
         // === 初始化 视频通话生图背景 ===
-        const _vcNaiOn = chat && chat.vcNovelAiEnabled && db.novelAiSettings && db.novelAiSettings.enabled && db.novelAiSettings.token && this.state.callType === 'video';
+        const _vcNaiOn = chat && chat.vcNovelAiEnabled && db.novelAiSettings && db.novelAiSettings.enabled && (db.novelAiSettings.token || db.novelAiSettings.authMode === 'none') && this.state.callType === 'video';
         const _vcGptDrawOn = chat && chat.vcGptDrawEnabled && db.gptImageSettings && db.gptImageSettings.enabled && db.gptImageSettings.url && db.gptImageSettings.key && this.state.callType === 'video';
+        const _vcGoogleOn = chat && chat.vcGoogleImageEnabled && db.googleImageSettings?.enabled && db.googleImageSettings?.key && this.state.callType === 'video';
+        const _vcStabilityOn = chat && chat.vcStabilityImageEnabled && db.stabilityImageSettings?.enabled && db.stabilityImageSettings?.key && this.state.callType === 'video';
         const bgEl = document.getElementById('vc-nai-bg');
         const bgImg = document.getElementById('vc-nai-bg-img');
         if (bgEl) {
-            if (_vcNaiOn || _vcGptDrawOn) {
+            if (_vcNaiOn || _vcGptDrawOn || _vcGoogleOn || _vcStabilityOn) {
                 bgEl.style.display = 'block';
                 if (callSceneEl) callSceneEl.classList.add('vc-nai-active');
                 if (bgImg) { bgImg.src = ''; bgImg.style.opacity = '0'; }
@@ -1070,10 +1072,15 @@ const VideoCallModule = {
 
         // 判断是否需要等待 生图
         const chat = this.state.currentChat;
-        const _vcNaiOn = chat && chat.vcNovelAiEnabled && db.novelAiSettings && db.novelAiSettings.enabled && db.novelAiSettings.token;
+        const _vcNaiOn = chat && chat.vcNovelAiEnabled && db.novelAiSettings && db.novelAiSettings.enabled && (db.novelAiSettings.token || db.novelAiSettings.authMode === 'none');
         const _vcGptDrawOn = chat && chat.vcGptDrawEnabled && db.gptImageSettings && db.gptImageSettings.enabled && db.gptImageSettings.url && db.gptImageSettings.key;
-        
-        const needGenImage = naiTags.length > 0 && (_vcNaiOn || _vcGptDrawOn);
+        const _vcGoogleOn = chat && chat.vcGoogleImageEnabled && db.googleImageSettings?.enabled && db.googleImageSettings?.key;
+        const _vcStabilityOn = chat && chat.vcStabilityImageEnabled && db.stabilityImageSettings?.enabled && db.stabilityImageSettings?.key;
+        const activeProvider = db.activeImageProvider || (_vcGptDrawOn ? 'gpt' : 'novelai');
+        const providerAllowed = {
+            gpt: _vcGptDrawOn, novelai: _vcNaiOn, google: _vcGoogleOn, stability: _vcStabilityOn
+        };
+        const needGenImage = naiTags.length > 0 && !!providerAllowed[activeProvider];
 
         if (needGenImage) {
             // === 同步模式：等图片和文字都准备好再一起展示 ===
@@ -1082,9 +1089,9 @@ const VideoCallModule = {
 
             // 等待图片生成完成
             let imageUrl = null;
-            if (_vcGptDrawOn) {
+            if (activeProvider === 'gpt') {
                  imageUrl = await this.generateVcGptImage(naiTags[0]);
-            } else if (_vcNaiOn) {
+            } else {
                  imageUrl = await this.generateVcNovelAiImage(naiTags[0]);
             }
 

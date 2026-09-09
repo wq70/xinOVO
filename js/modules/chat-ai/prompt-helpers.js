@@ -199,21 +199,25 @@ b) [${character.realName}拒绝了${character.myName}的代付请求]\n`;
 function getOnlineOutputFormats(character, worldBooksBefore, worldBooksAfter) {
     let photoVideoFormat = '';
     
-    // === 自动生图判断 (支持 NovelAI / GPT) ===
+    // === 自动生图判断 ===
     const gptEnabled = db.gptImageSettings && db.gptImageSettings.enabled && db.gptImageSettings.url && db.gptImageSettings.key;
-    const naiEnabled = db.novelAiSettings && db.novelAiSettings.enabled && db.novelAiSettings.token;
-    const _imgEnabled = gptEnabled || naiEnabled;
-    const engine = naiEnabled ? 'novelai' : (gptEnabled ? 'gpt' : 'novelai');
+    const naiEnabled = db.novelAiSettings && db.novelAiSettings.enabled && (db.novelAiSettings.token || db.novelAiSettings.authMode === 'none');
+    const googleEnabled = db.googleImageSettings?.enabled && db.googleImageSettings?.key;
+    const stabilityEnabled = db.stabilityImageSettings?.enabled && db.stabilityImageSettings?.key;
+    const _imgEnabled = gptEnabled || naiEnabled || googleEnabled || stabilityEnabled;
+    const enabledMap = { gpt: gptEnabled, novelai: naiEnabled, google: googleEnabled, stability: stabilityEnabled };
+    const engine = enabledMap[db.activeImageProvider] ? db.activeImageProvider : (gptEnabled ? 'gpt' : naiEnabled ? 'novelai' : googleEnabled ? 'google' : 'stability');
+    const engineLabel = engine === 'novelai' ? 'NovelAI tag' : engine === 'gpt' ? 'DALL-E 描述' : engine === 'google' ? 'Gemini 图片描述' : 'Stability 提示词';
     
     if (character.useRealGallery && character.gallery && character.gallery.length > 0) {
         if (_imgEnabled) {
-            photoVideoFormat = `e) 照片/视频: [${character.realName}发来的照片/视频：{相册图片名称} 或 {中文描述}{{english, ${engine === 'gpt' ? 'dalle' : 'novelai'}, tags}}] (优先使用相册名称；若相册无匹配则填写中文描述，并在 {{ }} 内写英文 ${engine === 'gpt' ? 'DALL-E' : 'NovelAI'} 风格 tag。根据角色性别用1boy或1girl，包含外貌特征、服装、表情、动作、场景，不加质量词，不超过25个tag)`;
+            photoVideoFormat = `e) 照片/视频: [${character.realName}发来的照片/视频：{相册图片名称} 或 {中文描述}{{english image prompt}}] (优先使用相册名称；若相册无匹配则填写中文描述，并在 {{ }} 内写英文 ${engineLabel}。包含人物外貌、服装、表情、动作、场景和构图，不加质量词，保持简洁)`;
         } else {
             photoVideoFormat = `e) 照片/视频: [${character.realName}发来的照片/视频：{相册图片名称} 或 {文字描述}] (优先使用相册名称，若相册无匹配则填写照片/视频的详细文字描述)`;
         }
     } else {
         if (_imgEnabled) {
-            photoVideoFormat = `e) 照片/视频: [${character.realName}发来的照片/视频：{中文描述}{{english, ${engine === 'gpt' ? 'dalle' : 'novelai'}, tags}}] (发图时必须在 {{ }} 内写英文 ${engine === 'gpt' ? 'DALL-E' : 'NovelAI'} 风格 tag。根据角色性别用1boy或1girl，包含外貌特征、服装、表情、动作、场景，不加质量词，不超过25个tag)`;
+            photoVideoFormat = `e) 照片/视频: [${character.realName}发来的照片/视频：{中文描述}{{english image prompt}}] (发图时必须在 {{ }} 内写英文 ${engineLabel}。包含人物外貌、服装、表情、动作、场景和构图，不加质量词，保持简洁)`;
         } else {
             photoVideoFormat = `e) 照片/视频: [${character.realName}发来的照片/视频：{描述}]`;
         }
@@ -304,4 +308,3 @@ function getInjectedFormatsPrompt(character, formats) {
     });
     return prompt + '\n';
 }
-

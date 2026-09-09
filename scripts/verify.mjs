@@ -133,14 +133,14 @@ if (retainedLegacyTagErrors.length > 1) {
 }
 
 const logicalInfo = collectDocumentInfo(logicalDocument);
-const protectedDomSignature = 'ff58858fc64f42da1b695576f09915b5208caf2ecf4d01523056591dce2da0af';
+const protectedDomSignature = '908c4e5e1f3f47da21bcde8cb4144a7b0e1f92faf5657b6d9860eafd6e759fdf';
 const actualDomSignature = getNonScriptDomSignature(logicalDocument);
 if (actualDomSignature !== protectedDomSignature) {
     fail(`Assembled non-script DOM differs from the protected pre-split structure: ${actualDomSignature}`);
 }
 const textualIds = [...logicalHtml.matchAll(/\bid\s*=\s*["']([^"']+)["']/gi)].map(match => match[1]);
 const duplicateIds = [...new Set(textualIds.filter((id, index) => textualIds.indexOf(id) !== index))];
-if (textualIds.length !== 2087) fail(`Expected 2087 assembled IDs, found ${textualIds.length}`);
+if (textualIds.length !== 2166) fail(`Expected 2166 assembled IDs, found ${textualIds.length}`);
 if (duplicateIds.length) fail(`Duplicate assembled IDs: ${duplicateIds.join(', ')}`);
 
 const requiredIds = [

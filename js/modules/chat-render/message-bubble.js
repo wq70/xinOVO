@@ -922,8 +922,10 @@ const contentMatch = content.match(/^\[.*?(?:消息|回复)[：:]([\s\S]+)\]$/);
         } else {
             // === 自动生图逻辑 (NovelAI 或 GPT) ===
             const gptEnabled = db.gptImageSettings && db.gptImageSettings.enabled && db.gptImageSettings.url && db.gptImageSettings.key;
-            const naiEnabled = db.novelAiSettings && db.novelAiSettings.enabled && db.novelAiSettings.token;
-            const _imgEnabled = gptEnabled || naiEnabled;
+            const naiEnabled = db.novelAiSettings && db.novelAiSettings.enabled && (db.novelAiSettings.token || db.novelAiSettings.authMode === 'none');
+            const googleEnabled = db.googleImageSettings?.enabled && db.googleImageSettings?.key;
+            const stabilityEnabled = db.stabilityImageSettings?.enabled && db.stabilityImageSettings?.key;
+            const _imgEnabled = gptEnabled || naiEnabled || googleEnabled || stabilityEnabled;
             
             if (message.isNovelAiGenerating) {
                 // 后台生图进行中...
@@ -1311,7 +1313,9 @@ const contentMatch = content.match(/^\[.*?(?:消息|回复)[：:]([\s\S]+)\]$/);
             const next = (newIndex + chat.alternateGreetings.length) % chat.alternateGreetings.length;
             chat.currentGreetingIndex = next;
             chat.history[0].content = chat.alternateGreetings[next];
-            if (typeof saveData === 'function') saveData();
+            if (currentChatType === 'group' && typeof saveGroup === 'function') saveGroup(currentChatId);
+            else if (currentChatType === 'private' && typeof saveCharacter === 'function') saveCharacter(currentChatId);
+            else if (typeof saveData === 'function') saveData();
             renderMessages(false, true);
         };
         leftBtn.addEventListener('click', (e) => { e.stopPropagation(); applyGreeting(idx - 1); });

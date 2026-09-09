@@ -1,5 +1,12 @@
 window._naiGenAbortControllers = {};
 
+function saveImageGenerationChat(chatId, chatType) {
+    if (chatType === 'group' && typeof saveGroup === 'function') return saveGroup(chatId);
+    if (chatType === 'private' && typeof saveCharacter === 'function') return saveCharacter(chatId);
+    if (typeof saveData === 'function') return saveData();
+    return Promise.resolve();
+}
+
 window._scheduleBackgroundNaiGen = function(msgId, chatId, chatType, pvContent) {
     _naiAutoGenQueue.push(async () => {
         // 设置 AbortController 并支持可配置的超时时间
@@ -13,6 +20,7 @@ window._scheduleBackgroundNaiGen = function(msgId, chatId, chatType, pvContent) 
 
         let isSuccess = false;
         let finalImageUrl = null;
+        let finalMetadata = null;
         let errorReason = null;
 
         try {
@@ -24,6 +32,10 @@ window._scheduleBackgroundNaiGen = function(msgId, chatId, chatType, pvContent) 
             
             if (result && result.imageUrl) {
                 finalImageUrl = result.imageUrl;
+                finalMetadata = {
+                    provider: result.provider || db.activeImageProvider || '', model: result.model || '',
+                    size: result.size || '', seed: result.seed ?? null, atmosphere: result.atmosphere || '', generatedAt: Date.now()
+                };
                 // 如果开启了自动压缩，则先压缩
                 if (db.autoCompressImage !== false) {
                     try {
@@ -61,11 +73,13 @@ window._scheduleBackgroundNaiGen = function(msgId, chatId, chatType, pvContent) 
                             if (currentMsg._imageVersions.length === 0 || currentMsg._imageVersions[currentMsg._imageVersions.length - 1].imageUrl !== currentMsg.novelAiImageUrl) {
                                 currentMsg._imageVersions.push({
                                     imageUrl: currentMsg.novelAiImageUrl,
-                                    savedAt: Date.now()
+                                    savedAt: Date.now(),
+                                    metadata: currentMsg.imageGenerationMeta || null
                                 });
                             }
                         }
                         currentMsg.novelAiImageUrl = finalImageUrl;
+                        currentMsg.imageGenerationMeta = finalMetadata;
                         currentMsg._currentImageIndex = currentMsg._imageVersions ? currentMsg._imageVersions.length : 0;
                         currentMsg.novelAiError = null;
                         currentMsg.isNovelAiGenerating = false;
@@ -77,7 +91,7 @@ window._scheduleBackgroundNaiGen = function(msgId, chatId, chatType, pvContent) 
             }
 
             // 数据落盘
-            if (typeof saveData === 'function') saveData();
+            saveImageGenerationChat(chatId, chatType);
             
             // 如果用户还留在这个聊天界面，主动刷新气泡
             if (window.currentChatId === chatId && window.currentChatType === chatType) {
@@ -109,7 +123,7 @@ window.switchImageVersion = function(msgId, dir, event) {
 
     msg._currentImageIndex = currentIdx;
     
-    if (typeof saveData === 'function') saveData();
+    saveImageGenerationChat(currentChatId, currentChatType);
     if (typeof renderMessages === 'function') renderMessages(false, false);
 };
 
@@ -129,7 +143,7 @@ window.cancelImageGen = function(msgId) {
                 console.log(`[Image Auto Background] 发现僵尸状态消息 ${msgId}，执行强制取消...`);
                 msg.isNovelAiGenerating = false;
                 msg.novelAiError = '生图已取消或中断';
-                if (typeof saveData === 'function') saveData();
+                saveImageGenerationChat(currentChatId, currentChatType);
                 if (typeof renderMessages === 'function') renderMessages(false, false);
             }
         }
@@ -179,7 +193,7 @@ window.retryImageGen = function(msgId, chatId, chatType) {
 
     msg.novelAiError = null;
     msg.isNovelAiGenerating = true;
-    saveData();
+    saveImageGenerationChat(chatId, chatType);
     renderMessages(false, false);
 
     if (extractPrompt) {

@@ -172,10 +172,14 @@ const globalSettingKeys = [
     'theaterScenarios', 'theaterPromptPresets',
     'theaterHtmlScenarios', 'theaterHtmlPromptPresets', 'theaterMode',
     'theaterApiSettings', 'theaterFontSize', 'theaterFontPreset',
-    'novelAiSettings', 'gptImageSettings', 'gptImagePresets', 'avatarRecognitionDetailLevel', 'autoCompressImage',
+    'novelAiSettings', 'novelAiPresets', 'gptImageSettings', 'gptImagePresets',
+    'googleImageSettings', 'stabilityImageSettings', 'activeImageProvider',
+    'imageAtmosphereGroups', 'activeImageAtmosphereId',
+    'avatarRecognitionDetailLevel', 'autoCompressImage', 'imageGenTimeout',
     'phoneControlRecycleBin', 'nodeTemplates', 'nodeSummaryText', 'memoryTableTemplates', 'vectorMemoryTemplates',
     'nightModeSettings', 'homeStatusBarSettings', 'stickerCategories', 'magicRoom',
-    'keepAliveCodeEnabled', 'keepAliveAudioEnabled', 'keepAliveAudioSrc', 'keepAliveAudioName', 'keepAliveAudioLibrary'
+    'keepAliveCodeEnabled', 'keepAliveAudioEnabled', 'keepAliveAudioSrc', 'keepAliveAudioName', 'keepAliveAudioLibrary',
+    'ttsPresets', 'weatherApiSettings'
 ];
 if (typeof window !== 'undefined') window.globalSettingKeysForBackup = globalSettingKeys;
 

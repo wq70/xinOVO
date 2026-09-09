@@ -55,6 +55,13 @@ function initDatabase() {
             stickerCategories: data.stickerCategories || [],
             gptImageSettings: data.gptImageSettings || {},
             gptImagePresets: data.gptImagePresets || [],
+            novelAiSettings: data.novelAiSettings || {},
+            novelAiPresets: data.novelAiPresets || [],
+            googleImageSettings: data.googleImageSettings || {},
+            stabilityImageSettings: data.stabilityImageSettings || {},
+            activeImageProvider: data.activeImageProvider || '',
+            imageAtmosphereGroups: data.imageAtmosphereGroups || [],
+            activeImageAtmosphereId: data.activeImageAtmosphereId || '',
             magicRoom: Object.assign({
                 customPromptEnabled: false,
                 customPromptTemplate: '',
@@ -123,10 +130,33 @@ function initDatabase() {
         if (records.length) await connections.bulkPut(records);
         if (secureRecords.length) await secrets.bulkPut(secureRecords);
     });
+    // 大数据导入暂存表：文件完整写入并校验后，再在单个事务中替换正式数据。
+    dexieDB.version(6).stores({
+        characters: '&id', groups: '&id', worldBooks: '&id', myStickers: '&id', globalSettings: 'key', archives: '&id,characterId,timestamp',
+        mcpConnections: '&id,type,enabled,status,updatedAt',
+        mcpActivities: '&id,connectionId,status,chatId,createdAt',
+        mcpSettings: '&id',
+        mcpSecrets: '&id',
+        mcpSessions: '&id,connectionId,updatedAt',
+        mcpCapabilities: '&id,connectionId,kind,updatedAt',
+        mcpSubscriptions: '&id,connectionId,uri,status',
+        mcpTasks: '&id,connectionId,status,updatedAt',
+        mcpOAuthStates: '&id,connectionId,createdAt',
+        importCharacters: '&id',
+        importGroups: '&id',
+        importWorldBooks: '&id',
+        importMyStickers: '&id',
+        importArchives: '&id,characterId,timestamp',
+        importGlobalSettings: 'key'
+    });
 }
 
-// 数据保存与加载
-const saveData = async () => {
+// 数据保存与加载。旧调用入口保持不变；并发触发时合并为同一个有序写入队列，
+// 防止大数据下多个全量 bulkPut 同时排队、重复结构化克隆整库。
+let saveDataPromise = null;
+let saveDataRequestedWhileRunning = false;
+
+const performFullSave = async () => {
     // 存储配额预检
     if (navigator.storage && navigator.storage.estimate) {
         try {
@@ -169,40 +199,79 @@ const saveData = async () => {
     }
 };
 
-/**
- * 只保存单个角色到 IndexedDB（聊天消息写入、角色配置修改时使用）
- * 失败时自动降级为全量 saveData
- */
-const saveCharacter = async (characterId) => {
-    const character = db.characters.find(c => c.id === characterId);
-    if (!character) return;
+const saveData = async () => {
+    if (saveDataPromise) {
+        saveDataRequestedWhileRunning = true;
+        return saveDataPromise;
+    }
+
+    saveDataPromise = (async () => {
+        do {
+            saveDataRequestedWhileRunning = false;
+            await performFullSave();
+        } while (saveDataRequestedWhileRunning);
+    })();
+
     try {
-        await dexieDB.characters.put(character);
-    } catch (e) {
-        console.error("saveCharacter failed:", e);
+        await saveDataPromise;
+    } finally {
+        saveDataPromise = null;
     }
 };
 
 /**
- * 只保存单个群组到 IndexedDB（群消息写入、群配置修改时使用）
- * 失败时自动降级为全量 saveData
+ * 只保存单个角色到 IndexedDB（聊天消息写入、角色配置修改时使用），
+ * 同一角色的并发保存会按顺序合并。
+ */
+const characterSaveQueues = new Map();
+const groupSaveQueues = new Map();
+
+const saveSingleChatRecord = async (table, collection, id, queueMap, label) => {
+    const existing = queueMap.get(id);
+    if (existing) {
+        existing.requested = true;
+        return existing.promise;
+    }
+    const state = { requested: false, promise: null };
+    state.promise = (async () => {
+        try {
+            do {
+                state.requested = false;
+                const record = collection.find(item => item.id === id);
+                if (!record) return;
+                await table.put(record);
+            } while (state.requested);
+        } catch (error) {
+            console.error(`${label} failed:`, error);
+            if (typeof showToast === 'function') showToast('保存聊天数据失败: ' + error.message, 6000);
+        } finally {
+            queueMap.delete(id);
+        }
+    })();
+    queueMap.set(id, state);
+    return state.promise;
+};
+
+const saveCharacter = async (characterId) => {
+    return saveSingleChatRecord(dexieDB.characters, db.characters, characterId, characterSaveQueues, 'saveCharacter');
+};
+
+/**
+ * 只保存单个群组到 IndexedDB（群消息写入、群配置修改时使用），
+ * 同一群组的并发保存会按顺序合并。
  */
 const saveGroup = async (groupId) => {
-    const group = db.groups.find(g => g.id === groupId);
-    if (!group) return;
-    try {
-        await dexieDB.groups.put(group);
-    } catch (e) {
-        console.error("saveGroup failed:", e);
-    }
+    return saveSingleChatRecord(dexieDB.groups, db.groups, groupId, groupSaveQueues, 'saveGroup');
 };
 
 /**
  * 只保存全局设置（apiSettings、壁纸、主题等），不写角色/群
  */
-const saveGlobalSettings = async () => {
+const saveGlobalSettings = async (keys) => {
     try {
-        const allSettingKeys = [...globalSettingKeys, 'worldBookCategoryOrder'];
+        const allSettingKeys = Array.isArray(keys) && keys.length
+            ? Array.from(new Set(keys))
+            : [...globalSettingKeys, 'worldBookCategoryOrder'];
         const promises = allSettingKeys
             .filter(key => db[key] !== undefined)
             .map(key => dexieDB.globalSettings.put({ key, value: db[key] }));
@@ -326,6 +395,13 @@ const loadData = async () => {
         autoCompressImage: true,
         gptImageSettings: {},
         gptImagePresets: [],
+        novelAiSettings: {},
+        novelAiPresets: [],
+        googleImageSettings: {},
+        stabilityImageSettings: {},
+        activeImageProvider: '',
+        imageAtmosphereGroups: [],
+        activeImageAtmosphereId: '',
         nodeTemplates: [],
         nodeSummaryText: '摘要',
         stickerCategories: [],
@@ -528,13 +604,39 @@ const loadData = async () => {
 // 存储分析工具
 const dataStorage = {
     getStorageInfo: async function() {
-        const stringify = (obj) => {
-            try {
-                return JSON.stringify(obj).length;
-            } catch (e) {
-                console.warn("Could not stringify object for size calculation:", obj, e);
-                return 0;
+        const measure = async (root) => {
+            const stack = [root];
+            const seen = new Set();
+            let size = 0;
+            let visited = 0;
+            while (stack.length) {
+                const value = stack.pop();
+                if (value == null) {
+                    size += 4;
+                } else if (typeof value === 'string') {
+                    size += value.length + 2;
+                } else if (typeof value === 'number' || typeof value === 'boolean') {
+                    size += String(value).length;
+                } else if (typeof value === 'object') {
+                    if (seen.has(value)) continue;
+                    seen.add(value);
+                    size += 2;
+                    if (Array.isArray(value)) {
+                        size += Math.max(0, value.length - 1);
+                        for (let i = 0; i < value.length; i++) stack.push(value[i]);
+                    } else {
+                        const entries = Object.entries(value);
+                        size += Math.max(0, entries.length - 1);
+                        entries.forEach(([key, child]) => {
+                            size += key.length + 3;
+                            stack.push(child);
+                        });
+                    }
+                }
+                visited++;
+                if (visited % 2000 === 0) await new Promise(resolve => setTimeout(resolve, 0));
             }
+            return size;
         };
 
         let categorizedSizes = {
@@ -551,58 +653,54 @@ const dataStorage = {
         }
 
         // 1. Messages (History)
-        (db.characters || []).forEach(char => {
-            categorizedSizes.messages += stringify(char.history);
-        });
-        (db.groups || []).forEach(group => {
-            categorizedSizes.messages += stringify(group.history);
-        });
+        for (const char of (db.characters || [])) categorizedSizes.messages += await measure(char.history);
+        for (const group of (db.groups || [])) categorizedSizes.messages += await measure(group.history);
 
         // 2. Characters and Groups (metadata)
-        (db.characters || []).forEach(char => {
+        for (const char of (db.characters || [])) {
             const charWithoutHistory = { ...char, history: undefined };
-            categorizedSizes.charactersAndGroups += stringify(charWithoutHistory);
-        });
-        (db.groups || []).forEach(group => {
+            categorizedSizes.charactersAndGroups += await measure(charWithoutHistory);
+        }
+        for (const group of (db.groups || [])) {
             const groupWithoutHistory = { ...group, history: undefined };
-            categorizedSizes.charactersAndGroups += stringify(groupWithoutHistory);
-        });
+            categorizedSizes.charactersAndGroups += await measure(groupWithoutHistory);
+        }
 
         // 3. World and Forum
-        categorizedSizes.worldAndForum += stringify(db.worldBooks);
-        categorizedSizes.worldAndForum += stringify(db.forumPosts);
-        categorizedSizes.worldAndForum += stringify(db.forumBindings);
+        categorizedSizes.worldAndForum += await measure(db.worldBooks);
+        categorizedSizes.worldAndForum += await measure(db.forumPosts);
+        categorizedSizes.worldAndForum += await measure(db.forumBindings);
 
         // 4. Personalization
-        categorizedSizes.personalization += stringify(db.myStickers);
-        categorizedSizes.personalization += stringify(db.wallpaper);
-        categorizedSizes.personalization += stringify(db.globalChatWallpaper);
-        categorizedSizes.personalization += stringify(db.globalCallWallpaper);
-        categorizedSizes.personalization += stringify(db.homeScreenMode);
-        categorizedSizes.personalization += stringify(db.fontUrl);
-        categorizedSizes.personalization += stringify(db.localFontName);
-        categorizedSizes.personalization += stringify(db.fontBuffer);
-        categorizedSizes.personalization += stringify(db.customIcons);
-        categorizedSizes.personalization += stringify(db.bubbleCssPresets);
-        categorizedSizes.personalization += stringify(db.myPersonaPresets);
-        categorizedSizes.personalization += stringify(db.globalCss);
-        categorizedSizes.personalization += stringify(db.globalCssPresets);
-        categorizedSizes.personalization += stringify(db.homeSignature);
-        categorizedSizes.personalization += stringify(db.pomodoroTasks);
-        categorizedSizes.personalization += stringify(db.pomodoroSettings);
-        categorizedSizes.personalization += stringify(db.insWidgetSettings);
-        categorizedSizes.personalization += stringify(db.homeWidgetSettings);
-        categorizedSizes.personalization += stringify(db.moreProfileCardBg);
-        categorizedSizes.personalization += stringify(db.soundPresets);
-        categorizedSizes.personalization += stringify(db.iconPresets);
+        categorizedSizes.personalization += await measure(db.myStickers);
+        categorizedSizes.personalization += await measure(db.wallpaper);
+        categorizedSizes.personalization += await measure(db.globalChatWallpaper);
+        categorizedSizes.personalization += await measure(db.globalCallWallpaper);
+        categorizedSizes.personalization += await measure(db.homeScreenMode);
+        categorizedSizes.personalization += await measure(db.fontUrl);
+        categorizedSizes.personalization += await measure(db.localFontName);
+        categorizedSizes.personalization += await measure(db.fontBuffer);
+        categorizedSizes.personalization += await measure(db.customIcons);
+        categorizedSizes.personalization += await measure(db.bubbleCssPresets);
+        categorizedSizes.personalization += await measure(db.myPersonaPresets);
+        categorizedSizes.personalization += await measure(db.globalCss);
+        categorizedSizes.personalization += await measure(db.globalCssPresets);
+        categorizedSizes.personalization += await measure(db.homeSignature);
+        categorizedSizes.personalization += await measure(db.pomodoroTasks);
+        categorizedSizes.personalization += await measure(db.pomodoroSettings);
+        categorizedSizes.personalization += await measure(db.insWidgetSettings);
+        categorizedSizes.personalization += await measure(db.homeWidgetSettings);
+        categorizedSizes.personalization += await measure(db.moreProfileCardBg);
+        categorizedSizes.personalization += await measure(db.soundPresets);
+        categorizedSizes.personalization += await measure(db.iconPresets);
 
         // 5. API and Core
-        categorizedSizes.apiAndCore += stringify(db.apiSettings);
-        categorizedSizes.apiAndCore += stringify(db.apiPresets);
-        categorizedSizes.apiAndCore += stringify(db.cotSettings);
-        categorizedSizes.apiAndCore += stringify(db.cotPresets);
-        categorizedSizes.apiAndCore += stringify(db.keepAliveAudioSrc);
-        categorizedSizes.apiAndCore += stringify(db.keepAliveAudioLibrary);
+        categorizedSizes.apiAndCore += await measure(db.apiSettings);
+        categorizedSizes.apiAndCore += await measure(db.apiPresets);
+        categorizedSizes.apiAndCore += await measure(db.cotSettings);
+        categorizedSizes.apiAndCore += await measure(db.cotPresets);
+        categorizedSizes.apiAndCore += await measure(db.keepAliveAudioSrc);
+        categorizedSizes.apiAndCore += await measure(db.keepAliveAudioLibrary);
 
         const totalSize = Object.values(categorizedSizes).reduce((sum, size) => sum + size, 0);
 
