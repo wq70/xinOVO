@@ -4,9 +4,12 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "check": "node scripts/verify.mjs",
+    "check": "node scripts/verify.mjs && node scripts/test-vector-memory.mjs && node scripts/test-call-reply.mjs && node scripts/test-novelai-vibe.mjs",
+    "test:vector": "node scripts/test-vector-memory.mjs",
+    "test:call": "node scripts/test-call-reply.mjs",
     "test:mcp": "node scripts/test-mcp.mjs",
-    "test:media": "node scripts/test-media-providers.mjs"
+    "test:media": "node scripts/test-media-providers.mjs",
+    "test:vibe": "node scripts/test-novelai-vibe.mjs"
   },
   "devDependencies": {
     "parse5": "8.0.1"

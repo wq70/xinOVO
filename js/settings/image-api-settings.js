@@ -412,11 +412,22 @@ function setupNovelAiSettings() {
     const authModeEl = document.getElementById('novelai-auth-mode');
     const generatePathEl = document.getElementById('novelai-generate-path');
     const streamPathEl = document.getElementById('novelai-stream-path');
+    const encodeVibePathEl = document.getElementById('novelai-encode-vibe-path');
     const authNameEl = document.getElementById('novelai-auth-name');
     const extraHeadersEl = document.getElementById('novelai-extra-headers');
-    const modelEl = document.getElementById('novelai-model');
+    const modelEl = document.getElementById('novelai-api-model') || document.getElementById('novelai-model');
+    const legacyModelEl = document.getElementById('novelai-model');
     const resolutionEl = document.getElementById('novelai-resolution');
     const samplerEl = document.getElementById('novelai-sampler');
+    const noiseScheduleEl = document.getElementById('novelai-noise-schedule');
+    const qualityToggleEl = document.getElementById('novelai-quality-toggle');
+    const ucPresetEl = document.getElementById('novelai-uc-preset');
+    const smeaEl = document.getElementById('novelai-smea');
+    const smeaDynEl = document.getElementById('novelai-smea-dyn');
+    const autoSmeaEl = document.getElementById('novelai-auto-smea');
+    const cfgRescaleEl = document.getElementById('novelai-cfg-rescale');
+    const seedEl = document.getElementById('novelai-seed');
+    const imageFormatEl = document.getElementById('novelai-image-format');
     const stepsSlider = document.getElementById('novelai-steps');
     const stepsValue = document.getElementById('novelai-steps-value');
     const scaleSlider = document.getElementById('novelai-scale');
@@ -450,6 +461,7 @@ function setupNovelAiSettings() {
             endpointMode: endpointModeEl?.value || 'auto', authMode,
             generatePath: generatePathEl?.value.trim() || '/ai/generate-image',
             streamPath: streamPathEl?.value.trim() || '/ai/generate-image-stream',
+            encodeVibePath: encodeVibePathEl?.value.trim() || '/ai/encode-vibe',
             authHeaderName: authMode === 'header' ? (authNameEl?.value.trim() || 'Authorization') : '',
             authQueryName: authMode === 'query' ? (authNameEl?.value.trim() || 'key') : '',
             extraHeaders
@@ -471,11 +483,22 @@ function setupNovelAiSettings() {
         if (authModeEl) authModeEl.value = s.authMode || 'bearer';
         if (generatePathEl) generatePathEl.value = s.generatePath || '/ai/generate-image';
         if (streamPathEl) streamPathEl.value = s.streamPath || '/ai/generate-image-stream';
+        if (encodeVibePathEl) encodeVibePathEl.value = s.encodeVibePath || '/ai/encode-vibe';
         if (authNameEl) authNameEl.value = s.authHeaderName || s.authQueryName || '';
         if (extraHeadersEl) extraHeadersEl.value = s.extraHeaders ? JSON.stringify(s.extraHeaders) : '';
         if (modelEl && s.model) modelEl.value = s.model;
+        if (legacyModelEl && s.model) legacyModelEl.value = s.model;
         if (resolutionEl && s.resolution) resolutionEl.value = s.resolution;
         if (samplerEl && s.sampler) samplerEl.value = s.sampler;
+        if (noiseScheduleEl) noiseScheduleEl.value = s.noiseSchedule || 'karras';
+        if (qualityToggleEl) qualityToggleEl.checked = s.qualityToggle !== false;
+        if (ucPresetEl) ucPresetEl.value = String(s.ucPreset ?? 0);
+        if (smeaEl) smeaEl.checked = !!s.smea;
+        if (smeaDynEl) smeaDynEl.checked = !!s.smeaDyn;
+        if (autoSmeaEl) autoSmeaEl.checked = !!s.autoSmea;
+        if (cfgRescaleEl) cfgRescaleEl.value = String(s.cfgRescale ?? 0);
+        if (seedEl) seedEl.value = s.seed ?? '';
+        if (imageFormatEl) imageFormatEl.value = s.imageFormat || 'png';
         if (stepsSlider && s.steps !== undefined) {
             stepsSlider.value = s.steps;
             if (stepsValue) stepsValue.textContent = s.steps;
@@ -506,6 +529,15 @@ function setupNovelAiSettings() {
             scaleValue.textContent = e.target.value;
         });
     }
+    modelEl?.addEventListener('change', () => {
+        if (legacyModelEl && legacyModelEl !== modelEl) legacyModelEl.value = modelEl.value;
+    });
+    if (legacyModelEl && legacyModelEl !== modelEl) {
+        legacyModelEl.addEventListener('change', () => {
+            modelEl.value = legacyModelEl.value;
+            modelEl.dispatchEvent(new Event('change'));
+        });
+    }
     
     if (customUrlEnabledEl && customUrlContainer) {
         customUrlEnabledEl.addEventListener('change', (e) => {
@@ -528,6 +560,18 @@ function setupNovelAiSettings() {
                 model: modelEl ? modelEl.value : 'nai-diffusion-4-curated-preview',
                 resolution: resolutionEl ? resolutionEl.value : '832x1216',
                 sampler: samplerEl ? samplerEl.value : 'k_euler',
+                noiseSchedule: noiseScheduleEl?.value || 'karras',
+                qualityToggle: qualityToggleEl?.checked !== false,
+                ucPreset: Number.parseInt(ucPresetEl?.value || '0', 10),
+                smea: !!smeaEl?.checked,
+                smeaDyn: !!smeaDynEl?.checked,
+                autoSmea: !!autoSmeaEl?.checked,
+                cfgRescale: Number.parseFloat(cfgRescaleEl?.value || '0') || 0,
+                seed: seedEl?.value === '' ? '' : Math.max(0, Number.parseInt(seedEl.value, 10) || 0),
+                imageFormat: imageFormatEl?.value || 'png',
+                characterPrompts: db.novelAiSettings?.characterPrompts || [],
+                characterUseCoords: !!db.novelAiSettings?.characterUseCoords,
+                characterUseOrder: db.novelAiSettings?.characterUseOrder !== false,
                 steps: stepsSlider ? parseInt(stepsSlider.value) : 28,
                 scale: scaleSlider ? parseFloat(scaleSlider.value) : 5,
                 systemPrompt: systemPromptEl ? systemPromptEl.value.trim() : '',
@@ -566,6 +610,15 @@ function setupNovelAiSettings() {
                     model: modelEl ? modelEl.value : 'nai-diffusion-4-curated-preview',
                     resolution: resolutionEl ? resolutionEl.value : '832x1216',
                     sampler: samplerEl ? samplerEl.value : 'k_euler',
+                    noiseSchedule: noiseScheduleEl?.value || 'karras',
+                    qualityToggle: qualityToggleEl?.checked !== false,
+                    ucPreset: Number.parseInt(ucPresetEl?.value || '0', 10),
+                    smea: !!smeaEl?.checked,
+                    smeaDyn: !!smeaDynEl?.checked,
+                    autoSmea: !!autoSmeaEl?.checked,
+                    cfgRescale: Number.parseFloat(cfgRescaleEl?.value || '0') || 0,
+                    seed: seedEl?.value === '' ? '' : Math.max(0, Number.parseInt(seedEl.value, 10) || 0),
+                    imageFormat: imageFormatEl?.value || 'png',
                     steps: stepsSlider ? parseInt(stepsSlider.value) : 28,
                     scale: scaleSlider ? parseFloat(scaleSlider.value) : 5,
                     systemPrompt: systemPromptEl ? systemPromptEl.value.trim() : '',
@@ -645,11 +698,23 @@ function setupNovelAiSettings() {
             if (authModeEl) authModeEl.value = p.data.authMode || 'bearer';
             if (generatePathEl) generatePathEl.value = p.data.generatePath || '/ai/generate-image';
             if (streamPathEl) streamPathEl.value = p.data.streamPath || '/ai/generate-image-stream';
+            if (encodeVibePathEl) encodeVibePathEl.value = p.data.encodeVibePath || '/ai/encode-vibe';
             if (authNameEl) authNameEl.value = p.data.authHeaderName || p.data.authQueryName || '';
             if (extraHeadersEl) extraHeadersEl.value = p.data.extraHeaders ? JSON.stringify(p.data.extraHeaders) : '';
             if (modelEl && p.data.model) modelEl.value = p.data.model;
+            if (legacyModelEl && p.data.model) legacyModelEl.value = p.data.model;
+            if (modelEl && p.data.model) modelEl.dispatchEvent(new Event('change'));
             if (resolutionEl && p.data.resolution) resolutionEl.value = p.data.resolution;
             if (samplerEl && p.data.sampler) samplerEl.value = p.data.sampler;
+            if (noiseScheduleEl) noiseScheduleEl.value = p.data.noiseSchedule || 'karras';
+            if (qualityToggleEl) qualityToggleEl.checked = p.data.qualityToggle !== false;
+            if (ucPresetEl) ucPresetEl.value = String(p.data.ucPreset ?? 0);
+            if (smeaEl) smeaEl.checked = !!p.data.smea;
+            if (smeaDynEl) smeaDynEl.checked = !!p.data.smeaDyn;
+            if (autoSmeaEl) autoSmeaEl.checked = !!p.data.autoSmea;
+            if (cfgRescaleEl) cfgRescaleEl.value = String(p.data.cfgRescale ?? 0);
+            if (seedEl) seedEl.value = p.data.seed ?? '';
+            if (imageFormatEl) imageFormatEl.value = p.data.imageFormat || 'png';
             if (stepsSlider && p.data.steps !== undefined) {
                 stepsSlider.value = p.data.steps;
                 if (stepsValue) stepsValue.textContent = p.data.steps;
@@ -661,6 +726,13 @@ function setupNovelAiSettings() {
             if (systemPromptEl && p.data.systemPrompt !== undefined) systemPromptEl.value = p.data.systemPrompt;
             if (artistTagsEl && p.data.artistTags !== undefined) artistTagsEl.value = p.data.artistTags;
             if (negativePromptEl && p.data.negativePrompt !== undefined) negativePromptEl.value = p.data.negativePrompt;
+            if (Array.isArray(p.data.characterPrompts)) {
+                db.novelAiSettings ||= {};
+                db.novelAiSettings.characterPrompts = JSON.parse(JSON.stringify(p.data.characterPrompts));
+                db.novelAiSettings.characterUseCoords = !!p.data.characterUseCoords;
+                db.novelAiSettings.characterUseOrder = p.data.characterUseOrder !== false;
+                document.dispatchEvent(new CustomEvent('novelai-character-settings-changed'));
+            }
             
             showToast(`已加载 NovelAI 预设：${selectedName}`);
         });
@@ -672,12 +744,23 @@ function setupNovelAiSettings() {
             try { compatible = readCompatibleOptions(); }
             catch (error) { showToast(error.message); return; }
             const data = {
-                token: tokenEl ? tokenEl.value.trim() : '',
                 customUrlEnabled: customUrlEnabledEl ? customUrlEnabledEl.checked : false,
                 customUrl: customUrlEl ? customUrlEl.value.trim() : '',
                 model: modelEl ? modelEl.value : 'nai-diffusion-4-curated-preview',
                 resolution: resolutionEl ? resolutionEl.value : '832x1216',
                 sampler: samplerEl ? samplerEl.value : 'k_euler',
+                noiseSchedule: noiseScheduleEl?.value || 'karras',
+                qualityToggle: qualityToggleEl?.checked !== false,
+                ucPreset: Number.parseInt(ucPresetEl?.value || '0', 10),
+                smea: !!smeaEl?.checked,
+                smeaDyn: !!smeaDynEl?.checked,
+                autoSmea: !!autoSmeaEl?.checked,
+                cfgRescale: Number.parseFloat(cfgRescaleEl?.value || '0') || 0,
+                seed: seedEl?.value === '' ? '' : Math.max(0, Number.parseInt(seedEl.value, 10) || 0),
+                imageFormat: imageFormatEl?.value || 'png',
+                characterPrompts: JSON.parse(JSON.stringify(db.novelAiSettings?.characterPrompts || [])),
+                characterUseCoords: !!db.novelAiSettings?.characterUseCoords,
+                characterUseOrder: db.novelAiSettings?.characterUseOrder !== false,
                 steps: stepsSlider ? parseInt(stepsSlider.value) : 28,
                 scale: scaleSlider ? parseFloat(scaleSlider.value) : 5,
                 systemPrompt: systemPromptEl ? systemPromptEl.value.trim() : '',
@@ -822,6 +905,11 @@ function setupNovelAiSettings() {
             inp.click();
         });
     }
+    // VIBE 数据依赖 IndexedDB；设置界面加载完成后再绑定其独立管理器。
+    window.NovelAiVibe?.setupUI?.().catch(error => {
+        console.error('[NovelAI VIBE] 初始化失败:', error);
+        showToast(`VIBE 初始化失败：${error.message}`);
+    });
 }
 
 function setupAdditionalImageProviders() {
@@ -923,7 +1011,7 @@ function setupImageAtmosphereGroups() {
 
     const clearFields = () => Object.values(fields).forEach(element => { if (element) element.value = ''; });
     const renderSelect = () => {
-        select.innerHTML = '<option value="">不使用氛围组</option>';
+        select.innerHTML = '<option value="">不选择旧文字预设</option>';
         db.imageAtmosphereGroups.forEach(group => {
             if (!group?.id || !group?.name) return;
             const option = document.createElement('option');
@@ -945,7 +1033,7 @@ function setupImageAtmosphereGroups() {
         db.activeImageAtmosphereId = select.value || '';
         loadSelected();
         await saveImageApiGlobalSettings();
-        showToast(select.value ? '氛围组已应用' : '已停止使用氛围组');
+        showToast(select.value ? '已选择旧文字预设（不会自动注入生图）' : '已取消选择旧文字预设');
     });
     document.getElementById('image-atmosphere-new')?.addEventListener('click', () => {
         select.value = '';
@@ -970,7 +1058,7 @@ function setupImageAtmosphereGroups() {
         await saveImageApiGlobalSettings();
         renderSelect();
         loadSelected();
-        showToast(index >= 0 ? '氛围组已更新' : '氛围组已创建并应用');
+        showToast(index >= 0 ? '旧文字预设已更新' : '旧文字预设已创建（不会自动注入生图）');
     });
     document.getElementById('image-atmosphere-delete')?.addEventListener('click', async () => {
         if (!select.value) return showToast('请先选择要删除的氛围组');

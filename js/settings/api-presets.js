@@ -1,4 +1,10 @@
-const saveApiPresetSettings = () => saveGlobalSettings(['apiPresets']);
+const saveApiPresetSettings = async (additionalKeys = []) => {
+    const saved = await saveGlobalSettings([
+        'apiPresets',
+        ...(Array.isArray(additionalKeys) ? additionalKeys : [])
+    ]);
+    return saved !== false;
+};
 
 function _getApiPresets() {
     return db.apiPresets || [];
@@ -156,8 +162,14 @@ function setupSubApiSettings(prefix, dbKey, presetsKey) {
     const urlEl = document.getElementById(`${prefix}-api-url`);
     const keyEl = document.getElementById(`${prefix}-api-key`);
     const modelEl = document.getElementById(`${prefix}-api-model`);
+    const customModelEl = document.getElementById(`${prefix}-api-model-custom`);
     const fetchBtn = document.getElementById(`${prefix}-fetch-models-btn`);
     const saveBtn = document.getElementById(`${prefix}-api-save-btn`);
+    const testBtn = document.getElementById(`${prefix}-api-test-btn`);
+    const testStatusEl = document.getElementById(`${prefix}-api-test-status`);
+    const escapeOptionText = value => String(value || '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     
     const providerUrls = {
         newapi: '',
@@ -165,6 +177,20 @@ function setupSubApiSettings(prefix, dbKey, presetsKey) {
         claude: 'https://api.anthropic.com',
         gemini: 'https://generativelanguage.googleapis.com'
     };
+    if (prefix === 'vector') providerUrls.ollama = 'http://localhost:11434';
+
+    const getModelValue = () => (customModelEl?.value || modelEl?.value || '').trim();
+    const setModelValue = value => {
+        const model = String(value || '').trim();
+        if (customModelEl) customModelEl.value = model;
+        if (modelEl && model) modelEl.innerHTML = `<option value="${escapeOptionText(model)}">${escapeOptionText(model)}</option>`;
+    };
+    const buildCurrentConfig = () => ({
+        provider: providerEl.value,
+        url: urlEl.value.trim(),
+        key: keyEl.value.trim(),
+        model: getModelValue()
+    });
     
     // 加载保存的设置
     if (db[dbKey]) {
@@ -172,14 +198,37 @@ function setupSubApiSettings(prefix, dbKey, presetsKey) {
         urlEl.value = db[dbKey].url || '';
         keyEl.value = db[dbKey].key || '';
         if (db[dbKey].model) {
-            modelEl.innerHTML = `<option value="${db[dbKey].model}">${db[dbKey].model}</option>`;
+            setModelValue(db[dbKey].model);
+        }
+        if (testStatusEl && db[dbKey].health?.status === 'healthy') {
+            testStatusEl.dataset.dimensions = String(db[dbKey].health.dimensions || '');
+            testStatusEl.dataset.profileKey = db[dbKey].health.profileKey || '';
+            testStatusEl.dataset.testedAt = String(db[dbKey].health.testedAt || '');
+            testStatusEl.textContent = `上次测试正常 · ${db[dbKey].health.dimensions || '未知'} 维`;
         }
     }
+
+    const refreshVectorEndpointPreview = () => {
+        if (prefix !== 'vector' || !testStatusEl || !window.VectorMemoryCore || testBtn?.classList.contains('loading')) return;
+        const endpoint = window.VectorMemoryCore.buildVectorEndpoint(buildCurrentConfig(), 'embeddings');
+        testStatusEl.textContent = endpoint ? `实际向量地址：${endpoint}` : '可先测试实际 Embedding，再保存配置';
+    };
+    const invalidateVectorTest = () => {
+        if (!testStatusEl) return;
+        delete testStatusEl.dataset.dimensions;
+        delete testStatusEl.dataset.profileKey;
+        delete testStatusEl.dataset.testedAt;
+    };
     
     // 服务商切换时自动填充URL
     providerEl.addEventListener('change', () => {
+        invalidateVectorTest();
         urlEl.value = providerUrls[providerEl.value] || '';
+        refreshVectorEndpointPreview();
     });
+    urlEl.addEventListener('input', () => { invalidateVectorTest(); refreshVectorEndpointPreview(); });
+    keyEl.addEventListener('input', invalidateVectorTest);
+    customModelEl?.addEventListener('input', () => { invalidateVectorTest(); refreshVectorEndpointPreview(); });
     
     // 拉取模型列表
     fetchBtn.addEventListener('click', async () => {
@@ -187,8 +236,9 @@ function setupSubApiSettings(prefix, dbKey, presetsKey) {
         let apiUrl = urlEl.value.trim();
         const apiKey = keyEl.value.trim();
         
-        if (!apiUrl || !apiKey) {
-            showToast('请先填写API地址和密钥！');
+        const keyOptional = provider === 'ollama' || provider === 'openai-noauth';
+        if (!apiUrl || (!apiKey && !keyOptional)) {
+            showToast(keyOptional ? '请先填写API地址！' : '请先填写API地址和密钥！');
             return;
         }
         
@@ -199,15 +249,16 @@ function setupSubApiSettings(prefix, dbKey, presetsKey) {
         
         if (apiUrl.endsWith('/')) apiUrl = apiUrl.slice(0, -1);
         
-        const endpoint = provider === 'gemini' 
-            ? `${apiUrl}/v1beta/models?key=${getRandomValue(apiKey)}` 
-            : `${apiUrl}/v1/models`;
+        const endpointBase = prefix === 'vector' && window.VectorMemoryCore
+            ? window.VectorMemoryCore.buildVectorEndpoint({ provider, url: apiUrl }, 'models')
+            : (provider === 'gemini' ? `${apiUrl}/v1beta/models` : `${apiUrl}/v1/models`);
+        const endpoint = provider === 'gemini' ? `${endpointBase}?key=${getRandomValue(apiKey)}` : endpointBase;
         
         fetchBtn.classList.add('loading');
         fetchBtn.disabled = true;
         
         try {
-            const headers = provider === 'gemini' ? {} : { Authorization: `Bearer ${apiKey}` };
+            const headers = provider === 'gemini' || keyOptional ? {} : { Authorization: `Bearer ${apiKey}` };
             const response = await fetch(endpoint, { method: 'GET', headers });
             
             if (!response.ok) {
@@ -217,20 +268,26 @@ function setupSubApiSettings(prefix, dbKey, presetsKey) {
             const data = await response.json();
             let models = [];
             
-            if (provider !== 'gemini' && data.data) {
+            if (provider === 'ollama' && Array.isArray(data.models)) {
+                models = data.models.map(item => item.name || item.model).filter(Boolean);
+            } else if (provider !== 'gemini' && data.data) {
                 models = data.data.map(e => e.id);
             } else if (provider === 'gemini' && data.models) {
-                models = data.models.map(e => e.name.replace('models/', ''));
+                models = data.models
+                    .filter(item => !Array.isArray(item.supportedGenerationMethods) || item.supportedGenerationMethods.includes('embedContent'))
+                    .map(e => e.name.replace('models/', ''));
             }
             
             modelEl.innerHTML = '';
             if (models.length > 0) {
+                invalidateVectorTest();
                 models.forEach(m => {
                     const opt = document.createElement('option');
                     opt.value = m;
                     opt.textContent = m;
                     modelEl.appendChild(opt);
                 });
+                if (customModelEl && !customModelEl.value) customModelEl.value = models[0];
                 showToast('模型列表拉取成功！');
             } else {
                 modelEl.innerHTML = '<option value="">未找到任何模型</option>';
@@ -245,10 +302,50 @@ function setupSubApiSettings(prefix, dbKey, presetsKey) {
             fetchBtn.disabled = false;
         }
     });
+
+    modelEl?.addEventListener('change', () => {
+        invalidateVectorTest();
+        if (customModelEl && modelEl.value) customModelEl.value = modelEl.value;
+        refreshVectorEndpointPreview();
+    });
+
+    testBtn?.addEventListener('click', async () => {
+        if (typeof window.testVectorApiConfiguration !== 'function') {
+            showToast('向量测试能力未加载');
+            return;
+        }
+        const config = buildCurrentConfig();
+        const keyOptional = config.provider === 'ollama' || config.provider === 'openai-noauth';
+        if (!config.url || !config.model || (!config.key && !keyOptional)) {
+            showToast('请先填写完整的向量 API 地址、模型和密钥');
+            return;
+        }
+        testBtn.disabled = true;
+        testBtn.classList.add('loading');
+        if (testStatusEl) testStatusEl.textContent = '正在发送实际 Embedding 测试…';
+        try {
+            const result = await window.testVectorApiConfiguration(config);
+            if (testStatusEl) {
+                testStatusEl.dataset.dimensions = String(result.dimensions);
+                testStatusEl.dataset.profileKey = result.profileKey || '';
+                testStatusEl.dataset.testedAt = String(Date.now());
+            }
+            if (testStatusEl) testStatusEl.textContent = `连接正常 · ${result.dimensions} 维 · ${result.latencyMs}ms`;
+            showToast('向量 API 测试成功');
+        } catch (error) {
+            if (testStatusEl) testStatusEl.textContent = `测试失败：${error.message || '未知错误'}`;
+            if (typeof showApiError === 'function') showApiError(error);
+            else showToast(error.message || '向量 API 测试失败');
+        } finally {
+            testBtn.disabled = false;
+            testBtn.classList.remove('loading');
+        }
+    });
     
     // 保存设置
     saveBtn.addEventListener('click', async () => {
-        if (!modelEl.value && (urlEl.value.trim() || keyEl.value.trim())) {
+        const modelValue = getModelValue();
+        if (!modelValue && (urlEl.value.trim() || keyEl.value.trim())) {
             showToast('请选择模型后保存！');
             return;
         }
@@ -259,20 +356,32 @@ function setupSubApiSettings(prefix, dbKey, presetsKey) {
         }
         
         // 如果全部为空，则清空设置
-        if (!urlEl.value.trim() && !keyEl.value.trim() && !modelEl.value) {
+        if (!urlEl.value.trim() && !keyEl.value.trim() && !modelValue) {
             db[dbKey] = {};
-            await saveApiPresetSettings();
+            if (!await saveApiPresetSettings([dbKey, presetsKey])) return;
             showToast(displayName + 'API设置已清空！');
             return;
         }
         
+        const previousConfig = db[dbKey] || {};
+        const configUnchanged = previousConfig.provider === providerEl.value
+            && previousConfig.url === urlEl.value
+            && previousConfig.key === keyEl.value
+            && previousConfig.model === modelValue;
         db[dbKey] = {
+            ...previousConfig,
             provider: providerEl.value,
             url: urlEl.value,
             key: keyEl.value,
-            model: modelEl.value
+            model: modelValue,
+            health: testStatusEl?.dataset.dimensions ? {
+                status: 'healthy',
+                dimensions: Number(testStatusEl.dataset.dimensions),
+                profileKey: testStatusEl.dataset.profileKey || '',
+                testedAt: Number(testStatusEl.dataset.testedAt) || Date.now()
+            } : (configUnchanged ? previousConfig.health || null : null)
         };
-        await saveApiPresetSettings();
+        if (!await saveApiPresetSettings([dbKey, presetsKey])) return;
         showToast(displayName + 'API设置已保存！');
     });
     
@@ -320,6 +429,7 @@ function setupSubApiPresets(prefix, dbKey, presetsKey) {
             const urlEl = document.getElementById(`${prefix}-api-url`);
             const keyEl = document.getElementById(`${prefix}-api-key`);
             const modelEl = document.getElementById(`${prefix}-api-model`);
+            const customModelEl = document.getElementById(`${prefix}-api-model-custom`);
             
             if (providerEl && preset.data.provider) providerEl.value = preset.data.provider;
             if (urlEl && preset.data.apiUrl) urlEl.value = preset.data.apiUrl;
@@ -327,6 +437,7 @@ function setupSubApiPresets(prefix, dbKey, presetsKey) {
             if (modelEl && preset.data.model) {
                 modelEl.innerHTML = `<option value="${preset.data.model}">${preset.data.model}</option>`;
             }
+            if (customModelEl && preset.data.model) customModelEl.value = preset.data.model;
             
             showToast('预设已应用到表单！');
         } catch (err) {
@@ -336,17 +447,18 @@ function setupSubApiPresets(prefix, dbKey, presetsKey) {
     });
     
     // 另存为预设
-    savePresetBtn?.addEventListener('click', () => {
+    savePresetBtn?.addEventListener('click', async () => {
         const providerEl = document.getElementById(`${prefix}-api-provider`);
         const urlEl = document.getElementById(`${prefix}-api-url`);
         const keyEl = document.getElementById(`${prefix}-api-key`);
         const modelEl = document.getElementById(`${prefix}-api-model`);
+        const customModelEl = document.getElementById(`${prefix}-api-model-custom`);
         
         const data = {
             provider: providerEl ? providerEl.value : '',
             apiUrl: urlEl ? urlEl.value : '',
             apiKey: keyEl ? keyEl.value : '',
-            model: modelEl ? modelEl.value : ''
+            model: customModelEl?.value || (modelEl ? modelEl.value : '')
         };
         
         let name = prompt('为该预设填写名称（会覆盖同名预设）：');
@@ -360,7 +472,7 @@ function setupSubApiPresets(prefix, dbKey, presetsKey) {
         else presets.push(preset);
         
         db[presetsKey] = presets;
-        saveApiPresetSettings();
+        if (!await saveApiPresetSettings([dbKey, presetsKey])) return;
         populatePresets();
         showToast('预设已保存');
     });
@@ -392,11 +504,11 @@ function setupSubApiPresets(prefix, dbKey, presetsKey) {
             delBtn.textContent = '删除';
             delBtn.className = 'btn btn-small';
             delBtn.style.cssText = 'background:#ff4444;color:white;padding:4px 12px;';
-            delBtn.onclick = () => {
+            delBtn.onclick = async () => {
                 if (confirm(`确定删除预设"${preset.name}"吗？`)) {
                     presets.splice(idx, 1);
                     db[presetsKey] = presets;
-                    saveApiPresetSettings();
+                    if (!await saveApiPresetSettings([dbKey, presetsKey])) return;
                     renderPresetsList();
                     populatePresets();
                     showToast('预设已删除');
@@ -438,7 +550,7 @@ function setupSubApiPresets(prefix, dbKey, presetsKey) {
                     else db[presetsKey].push(preset);
                 });
                 
-                await saveApiPresetSettings();
+                if (!await saveApiPresetSettings([dbKey, presetsKey])) return;
                 populatePresets();
                 showToast('预设已导入');
             } catch (err) {

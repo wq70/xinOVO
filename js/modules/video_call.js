@@ -14,6 +14,8 @@ const VideoCallModule = {
         startTime: 0,
         isAiSpeaking: false, // 防止用户连续输入
         isGenerating: false, // 标记是否正在请求AI生成
+        replyRequestId: 0, // 防止已结束通话的旧回复写入新状态
+        replyAbortController: null,
         initialAiResponse: null, // 存储开场白
         incomingChat: null, // 暂存来电对象
         isMinimized: false, // 是否处于悬浮窗模式
@@ -762,6 +764,11 @@ const VideoCallModule = {
 
     startCall: async function(type, isIncoming = false, chatObject = null) {
         this.hideCallTypeModal();
+        this.state.replyRequestId += 1;
+        if (this.state.replyAbortController) {
+            this.state.replyAbortController.abort();
+            this.state.replyAbortController = null;
+        }
         this.state.callType = type;
         this.state.isCallActive = true;
         this.state.hasEnteredCallScene = false;
@@ -769,6 +776,7 @@ const VideoCallModule = {
         this.state.currentCallContext = [];
         this.state.startTime = Date.now();
         this.state.isAiSpeaking = false;
+        this.state.isGenerating = false;
         this.state.initialAiResponse = null;
 
         let chat = chatObject;
@@ -1046,19 +1054,23 @@ const VideoCallModule = {
     },
 
     parseAndAddAiResponse: async function(fullText) {
+        if (typeof fullText !== 'string' || !fullText.trim()) {
+            return { renderedCount: 0, usedFallback: false, imageInstructionCount: 0 };
+        }
+
         // === 先提取画面生图指令 ===
-        const naiGenRegex = /\[.*?画面生图[：:]\s*\{\{([\s\S]+?)\}\}\s*\]/g;
+        const naiGenRegex = /[\[［].*?画面生图[：:]\s*\{\{([\s\S]+?)\}\}\s*[\]］]/g;
         let naiMatch;
         const naiTags = [];
         while ((naiMatch = naiGenRegex.exec(fullText)) !== null) {
             naiTags.push(naiMatch[1].trim());
         }
         // 从 fullText 中移除画面生图指令，避免被当作普通消息渲染
-        const cleanedText = fullText.replace(/\[.*?画面生图[：:]\s*\{\{[\s\S]+?\}\}\s*\]/g, '');
+        const cleanedText = fullText.replace(/[\[［].*?画面生图[：:]\s*\{\{[\s\S]+?\}\}\s*[\]］]/g, '');
 
         // 解析所有文字消息（先暂存，不立即显示）
         const parsedMessages = [];
-        const regex = /\[(.*?)[：:]([\s\S]+?)\]/g;
+        const regex = /[\[［]([^\]］]*?)[：:]([\s\S]+?)[\]］]/g;
         let match;
         while ((match = regex.exec(cleanedText)) !== null) {
             const tag = match[1];
@@ -1068,6 +1080,23 @@ const VideoCallModule = {
                 type = 'visual';
             }
             parsedMessages.push({ type, content });
+        }
+
+        // 模型有时会返回正常文本但没有严格套用通话标签。此时降级为声音消息，避免静默空白。
+        let usedFallback = false;
+        if (parsedMessages.length === 0) {
+            let fallbackText = cleanedText
+                .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+                .replace(/<analysis>[\s\S]*?<\/analysis>/gi, '')
+                .replace(/^\s*<(?:thinking|analysis)>[\s\S]*$/i, '')
+                .replace(/\[(?:incipere|finire)\]/gi, '')
+                .replace(/^```(?:\w+)?\s*|\s*```$/g, '')
+                .trim();
+            if (fallbackText) {
+                parsedMessages.push({ type: 'voice', content: fallbackText });
+                usedFallback = true;
+                console.warn('[VideoCall] Reply format fallback used');
+            }
         }
 
         // 判断是否需要等待 生图
@@ -1081,6 +1110,21 @@ const VideoCallModule = {
             gpt: _vcGptDrawOn, novelai: _vcNaiOn, google: _vcGoogleOn, stability: _vcStabilityOn
         };
         const needGenImage = naiTags.length > 0 && !!providerAllowed[activeProvider];
+
+        let renderedCount = 0;
+        const displayMessages = async (initialDelay, interval) => {
+            if (parsedMessages.length === 0) return;
+            await new Promise(resolve => setTimeout(resolve, initialDelay));
+            for (let index = 0; index < parsedMessages.length; index++) {
+                if (!this.state.isCallActive) break;
+                const msg = parsedMessages[index];
+                this.addMessage('ai', msg.type, msg.content);
+                renderedCount += 1;
+                if (index < parsedMessages.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, interval));
+                }
+            }
+        };
 
         if (needGenImage) {
             // === 同步模式：等图片和文字都准备好再一起展示 ===
@@ -1096,23 +1140,14 @@ const VideoCallModule = {
             }
 
             // 图片就绪（或失败）后，一次性展示所有文字消息
-            let delay = 300;
-            for (const msg of parsedMessages) {
-                setTimeout(() => {
-                    this.addMessage('ai', msg.type, msg.content);
-                }, delay);
-                delay += 1500;
-            }
+            await displayMessages(300, 1500);
         } else {
             // === 原始模式：无需生图，照旧延时展示 ===
-            let delay = 500;
-            for (const msg of parsedMessages) {
-                setTimeout(() => {
-                    this.addMessage('ai', msg.type, msg.content);
-                }, delay);
-                delay += 2000;
-            }
+            await displayMessages(500, 2000);
         }
+
+
+        return { renderedCount, usedFallback, imageInstructionCount: naiTags.length };
     },
 
     // === NovelAI 视频通话生图（返回 imageUrl 或 null） ===
@@ -1422,38 +1457,58 @@ const VideoCallModule = {
 
         this.state.isGenerating = true;
         this.state.isAiSpeaking = true; // 同时也标记为 speaking 以防其他操作干扰
+        const requestId = ++this.state.replyRequestId;
+        const abortController = typeof AbortController === 'function' ? new AbortController() : null;
+        this.state.replyAbortController = abortController;
         
         const avatar = document.getElementById('vc-call-avatar');
         
         // 点击反馈动画
-        avatar.style.transform = "scale(0.95)";
-        setTimeout(() => avatar.style.transform = "scale(1)", 150);
+        if (avatar) {
+            avatar.style.transform = "scale(0.95)";
+            setTimeout(() => avatar.style.transform = "scale(1)", 150);
+        }
         
         // 添加处理中状态样式 (视觉反馈)
-        avatar.classList.add('processing');
+        if (avatar) avatar.classList.add('processing');
 
         try {
             if (typeof getCallReply === 'function') {
                 let fullText = "";
-                await getCallReply(this.state.currentChat, this.state.callType, this.state.currentCallContext, (chunk) => {
+                const responseText = await getCallReply(this.state.currentChat, this.state.callType, this.state.currentCallContext, (chunk) => {
                     fullText += chunk;
-                });
+                }, { signal: abortController && abortController.signal });
+
+                if (!fullText && typeof responseText === 'string') fullText = responseText;
+                if (!this.state.isCallActive || requestId !== this.state.replyRequestId) return;
                 
-                if (fullText) {
+                if (fullText.trim()) {
                     // await 确保图片生成完成后再解除 processing 状态
-                    await this.parseAndAddAiResponse(fullText);
+                    const parseResult = await this.parseAndAddAiResponse(fullText);
+                    if (parseResult.renderedCount === 0 && this.state.isCallActive) {
+                        showToast("没有收到可显示的回复，请重试");
+                    }
+                } else if (responseText === '') {
+                    showToast("没有收到有效回复，请重试");
                 }
+            } else {
+                showToast("通话回复模块未加载");
             }
         } catch (e) {
-            console.error("AI Reply Error:", e);
-            showToast("信号连接失败");
+            if (e && e.name !== 'AbortError') {
+                console.error("AI Reply Error:", e);
+                showToast("信号连接失败");
+            }
         } finally {
-            // 移除处理中状态样式
-            if (avatar) avatar.classList.remove('processing');
-            this.state.isGenerating = false;
-            this.state.isAiSpeaking = false;
-            // 清除已使用的摄像头截图
-            this.state.lastCapturedFrame = null;
+            if (requestId === this.state.replyRequestId) {
+                // 只允许当前请求清理当前通话状态，避免旧请求污染新通话。
+                if (avatar) avatar.classList.remove('processing');
+                this.state.isGenerating = false;
+                this.state.isAiSpeaking = false;
+                this.state.replyAbortController = null;
+                // 清除已使用的摄像头截图
+                this.state.lastCapturedFrame = null;
+            }
         }
     },
 
@@ -1491,6 +1546,13 @@ const VideoCallModule = {
 
     endCall: async function(isLoading = false) {
         this._clearInterruptData();
+        this.state.replyRequestId += 1;
+        if (this.state.replyAbortController) {
+            this.state.replyAbortController.abort();
+            this.state.replyAbortController = null;
+        }
+        this.state.isGenerating = false;
+        this.state.isAiSpeaking = false;
         this.state.isCallActive = false;
         this.state.isMinimized = false;
         this.state.hasEnteredCallScene = false;

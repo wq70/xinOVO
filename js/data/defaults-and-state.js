@@ -174,7 +174,7 @@ const globalSettingKeys = [
     'theaterApiSettings', 'theaterFontSize', 'theaterFontPreset',
     'novelAiSettings', 'novelAiPresets', 'gptImageSettings', 'gptImagePresets',
     'googleImageSettings', 'stabilityImageSettings', 'activeImageProvider',
-    'imageAtmosphereGroups', 'activeImageAtmosphereId',
+    'imageAtmosphereGroups', 'activeImageAtmosphereId', 'novelAiVibeSettings', 'novelAiPreciseReferenceSettings',
     'avatarRecognitionDetailLevel', 'autoCompressImage', 'imageGenTimeout',
     'phoneControlRecycleBin', 'nodeTemplates', 'nodeSummaryText', 'memoryTableTemplates', 'vectorMemoryTemplates',
     'nightModeSettings', 'homeStatusBarSettings', 'stickerCategories', 'magicRoom',

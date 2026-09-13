@@ -149,6 +149,31 @@ function initDatabase() {
         importArchives: '&id,characterId,timestamp',
         importGlobalSettings: 'key'
     });
+    // NovelAI VIBE 使用独立表保存原图、模型编码和组；避免大体积二进制挤入全局设置。
+    dexieDB.version(7).stores({
+        characters: '&id', groups: '&id', worldBooks: '&id', myStickers: '&id', globalSettings: 'key', archives: '&id,characterId,timestamp',
+        mcpConnections: '&id,type,enabled,status,updatedAt',
+        mcpActivities: '&id,connectionId,status,chatId,createdAt',
+        mcpSettings: '&id', mcpSecrets: '&id', mcpSessions: '&id,connectionId,updatedAt',
+        mcpCapabilities: '&id,connectionId,kind,updatedAt', mcpSubscriptions: '&id,connectionId,uri,status',
+        mcpTasks: '&id,connectionId,status,updatedAt', mcpOAuthStates: '&id,connectionId,createdAt',
+        importCharacters: '&id', importGroups: '&id', importWorldBooks: '&id', importMyStickers: '&id',
+        importArchives: '&id,characterId,timestamp', importGlobalSettings: 'key',
+        naiVibeAssets: '&id,sourceHash,createdAt',
+        naiVibeEncodings: '&id,assetId,model,modelKey,createdAt',
+        naiVibeGroups: '&id,name,updatedAt'
+    });
+    dexieDB.version(8).stores({
+        characters: '&id', groups: '&id', worldBooks: '&id', myStickers: '&id', globalSettings: 'key', archives: '&id,characterId,timestamp',
+        mcpConnections: '&id,type,enabled,status,updatedAt', mcpActivities: '&id,connectionId,status,chatId,createdAt',
+        mcpSettings: '&id', mcpSecrets: '&id', mcpSessions: '&id,connectionId,updatedAt',
+        mcpCapabilities: '&id,connectionId,kind,updatedAt', mcpSubscriptions: '&id,connectionId,uri,status',
+        mcpTasks: '&id,connectionId,status,updatedAt', mcpOAuthStates: '&id,connectionId,createdAt',
+        importCharacters: '&id', importGroups: '&id', importWorldBooks: '&id', importMyStickers: '&id',
+        importArchives: '&id,characterId,timestamp', importGlobalSettings: 'key',
+        naiVibeAssets: '&id,sourceHash,createdAt', naiVibeEncodings: '&id,assetId,model,modelKey,createdAt', naiVibeGroups: '&id,name,updatedAt',
+        importNaiVibeAssets: '&id,sourceHash,createdAt', importNaiVibeEncodings: '&id,assetId,model,modelKey,createdAt', importNaiVibeGroups: '&id,name,updatedAt'
+    });
 }
 
 // 数据保存与加载。旧调用入口保持不变；并发触发时合并为同一个有序写入队列，
@@ -276,9 +301,11 @@ const saveGlobalSettings = async (keys) => {
             .filter(key => db[key] !== undefined)
             .map(key => dexieDB.globalSettings.put({ key, value: db[key] }));
         await Promise.all(promises);
+        return true;
     } catch (e) {
         console.error("saveGlobalSettings failed:", e);
         if (typeof showToast === 'function') showToast("保存设置失败: " + e.message);
+        return false;
     }
 };
 

@@ -312,7 +312,10 @@ function openImageViewer(src, msgId = null) {
 
                 if (!logModal || !logContent) return;
 
-                let engine = msgObj.imageGenerationMeta?.provider || db.activeImageProvider || '未知';
+                const activeMeta = currentIdx < (msgObj._imageVersions?.length || 0)
+                    ? msgObj._imageVersions[currentIdx]?.metadata
+                    : msgObj.imageGenerationMeta;
+                let engine = activeMeta?.provider || db.activeImageProvider || '未知';
 
                 const pvMatch = msgObj.content.match(/\[.*?发来的照片\/视频[：:]([\s\S]+?)\]/);
                 let promptRaw = pvMatch ? pvMatch[1].trim() : msgObj.content;
@@ -322,16 +325,22 @@ function openImageViewer(src, msgId = null) {
                 if (tagMatch) finalPrompt = tagMatch[1].trim();
 
                 let logText = `引擎: ${engine.toUpperCase()}\n状态: 成功`;
-                if (msgObj.imageGenerationMeta?.model) logText += `\n模型: ${msgObj.imageGenerationMeta.model}`;
-                if (msgObj.imageGenerationMeta?.size) logText += `\n尺寸/比例: ${msgObj.imageGenerationMeta.size}`;
-                if (msgObj.imageGenerationMeta?.seed != null) logText += `\nSeed: ${msgObj.imageGenerationMeta.seed}`;
-                if (msgObj.imageGenerationMeta?.atmosphere) logText += `\n氛围组: ${msgObj.imageGenerationMeta.atmosphere}`;
+                if (activeMeta?.model) logText += `\n模型: ${activeMeta.model}`;
+                if (activeMeta?.size) logText += `\n尺寸/比例: ${activeMeta.size}`;
+                if (activeMeta?.seed != null) logText += `\nSeed: ${activeMeta.seed}`;
+                if (activeMeta?.vibeGroup) logText += `\nVIBE 组: ${activeMeta.vibeGroup}（${activeMeta.vibeCount || 0} 个）`;
+                if (activeMeta?.correlationId) logText += `\n请求 ID: ${activeMeta.correlationId}`;
                 logText += `\n\n[提取的提示词]\n${finalPrompt}`;
-                
-                if (engine === 'novelai' && db.novelAiSettings) {
-                    if (db.novelAiSettings.systemPrompt) logText += `\n\n[系统附加词]\n${db.novelAiSettings.systemPrompt}`;
-                    if (db.novelAiSettings.artistTags) logText += `\n\n[画师附加词]\n${db.novelAiSettings.artistTags}`;
-                    if (db.novelAiSettings.negativePrompt) logText += `\n\n[负面提示词]\n${db.novelAiSettings.negativePrompt}`;
+
+                if (engine === 'novelai' && activeMeta?.requestSnapshot) {
+                    const snapshot = activeMeta.requestSnapshot;
+                    logText += `\n\n[实际请求快照]\n${JSON.stringify(snapshot, null, 2)}`;
+                } else if (engine === 'novelai' && db.novelAiSettings) {
+                    // 兼容旧消息：没有请求快照时才展示当前设置，并明确它不是历史请求原文。
+                    logText += '\n\n[当前设置（旧消息无历史快照）]';
+                    if (db.novelAiSettings.systemPrompt) logText += `\n系统附加词: ${db.novelAiSettings.systemPrompt}`;
+                    if (db.novelAiSettings.artistTags) logText += `\n画师附加词: ${db.novelAiSettings.artistTags}`;
+                    if (db.novelAiSettings.negativePrompt) logText += `\n负面提示词: ${db.novelAiSettings.negativePrompt}`;
                 } else if (engine === 'gpt' && db.gptImageSettings) {
                     if (db.gptImageSettings.systemPrompt) logText += `\n\n[系统附加词]\n${db.gptImageSettings.systemPrompt}`;
                     if (db.gptImageSettings.negativePrompt) logText += `\n\n[负面提示词]\n${db.gptImageSettings.negativePrompt}`;
@@ -359,23 +368,29 @@ function openImageViewer(src, msgId = null) {
         downloadBtn.onclick = async (e) => {
             e.stopPropagation(); // 阻止事件冒泡到 modal 上导致关闭
             try {
+                const selectedMeta = msgObj
+                    ? (currentIdx < (msgObj._imageVersions?.length || 0) ? msgObj._imageVersions[currentIdx]?.metadata : msgObj.imageGenerationMeta)
+                    : null;
+                const downloadSrc = selectedMeta?.originalImageUrl || img.src || src;
+                const mime = selectedMeta?.mimeType || (/^data:([^;,]+)/.exec(downloadSrc)?.[1]) || '';
+                const extension = mime === 'image/jpeg' ? 'jpg' : (mime === 'image/webp' ? 'webp' : 'png');
                 // 判断是不是 base64
-                if (src.startsWith('data:')) {
+                if (downloadSrc.startsWith('data:')) {
                     const a = document.createElement('a');
-                    a.href = src;
-                    a.download = `OVO_Image_${Date.now()}.png`;
+                    a.href = downloadSrc;
+                    a.download = `OVO_Image_${Date.now()}.${extension}`;
                     document.body.appendChild(a);
                     a.click();
                     a.remove();
                 } else {
                     // 如果是普通 url，为了避免跨域问题和能在浏览器直接下载，使用 fetch
-                    const response = await fetch(src);
+                    const response = await fetch(downloadSrc);
                     const blob = await response.blob();
                     const dlUrl = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = dlUrl;
-                    const extension = blob.type.split('/')[1] || 'png';
-                    a.download = `OVO_Image_${Date.now()}.${extension}`;
+                    const blobExtension = blob.type === 'image/jpeg' ? 'jpg' : (blob.type.split('/')[1] || extension);
+                    a.download = `OVO_Image_${Date.now()}.${blobExtension}`;
                     document.body.appendChild(a);
                     a.click();
                     a.remove();
@@ -557,11 +572,12 @@ function _imageGetAtmosphere(provider) {
 }
 
 function _imageMergePrompt(basePrompt, provider, systemPrompt, negativePrompt) {
-    const atmosphere = _imageGetAtmosphere(provider);
+    // 历史“文字氛围组”继续保留在设置中供查看/编辑/导入导出，但它不是任何平台的
+    // 原生 VIBE 能力，不能再跨平台静默改写用户的提示词。
     return {
-        prompt: [systemPrompt, atmosphere.prompt, basePrompt].filter(Boolean).join(', '),
-        negativePrompt: [negativePrompt, atmosphere.negativePrompt].filter(Boolean).join(', '),
-        atmosphere: atmosphere.name
+        prompt: [systemPrompt, basePrompt].filter(Boolean).join(', '),
+        negativePrompt: negativePrompt || '',
+        atmosphere: ''
     };
 }
 
@@ -577,10 +593,12 @@ async function _imageReadError(response, providerName) {
         }
     } catch (_) {}
     detail = String(detail || '').replace(/(?:Bearer\s*;?\s*|sk-)[A-Za-z0-9._-]{8,}/gi, '[已隐藏密钥]').slice(0, 300);
-    if (response.status === 401 || response.status === 403) return new Error(`${providerName} 鉴权失败，请检查密钥和服务权限 (${response.status})`);
-    if (response.status === 402) return new Error(`${providerName} 额度不足 (402)`);
-    if (response.status === 429) return new Error(`${providerName} 请求过于频繁，请稍后再试 (429)`);
-    return new Error(`${providerName} 请求失败 (${response.status})${detail ? `：${detail}` : ''}`);
+    const correlation = response.headers?.get?.('x-correlation-id');
+    const suffix = correlation ? `；请求 ID：${correlation}` : '';
+    if (response.status === 401 || response.status === 403) return new Error(`${providerName} 鉴权失败，请检查密钥和服务权限 (${response.status})${suffix}`);
+    if (response.status === 402) return new Error(`${providerName} 额度不足 (402)${suffix}`);
+    if (response.status === 429) return new Error(`${providerName} 请求过于频繁，请稍后再试 (429)${suffix}`);
+    return new Error(`${providerName} 请求失败 (${response.status})${detail ? `：${detail}` : ''}${suffix}`);
 }
 
 /**
@@ -616,7 +634,7 @@ async function generateGptImage(prompt, overrideSettings = {}, signal = null) {
     const systemPrompt = settings.systemPrompt || '';
     const negativePrompt = settings.negativePrompt || '';
 
-    // 智能拼接提示词（保留旧系统词与角色画师词，并追加当前氛围组）
+    // 智能拼接提示词（保留旧系统词与角色画师词）
     const promptParts = [];
     if (systemPrompt) promptParts.push(systemPrompt);
     
@@ -714,14 +732,14 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
     const [widthStr, heightStr] = resolution.split('x');
     const width = parseInt(widthStr) || 832;
     const height = parseInt(heightStr) || 1216;
-    const sampler = settings.sampler || 'k_euler';
-    const steps = settings.steps || 28;
-    const scale = settings.scale || 5;
+    const sampler = settings.sampler || 'k_euler_ancestral';
+    const steps = Number.isFinite(Number(settings.steps)) ? Number(settings.steps) : 28;
+    const scale = Number.isFinite(Number(settings.scale)) ? Number(settings.scale) : 5;
     const systemPrompt = settings.systemPrompt || '';
     const artistTags = settings.artistTags || '';
     const negativePrompt = settings.negativePrompt || '';
 
-    // 拼接最终 prompt：系统基础 Prompt + 画师串 + 氛围组 + 用户 prompt
+    // 拼接最终 prompt：系统基础 Prompt + 画师串 + 用户 prompt。VIBE 走独立图片引用字段。
     const merged = _imageMergePrompt([artistTags, prompt].filter(Boolean).join(', '), 'novelai', systemPrompt, negativePrompt);
     const fullPrompt = merged.prompt;
     const fullNegativePrompt = merged.negativePrompt;
@@ -731,13 +749,25 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
     // inpainting 模型不能直接生成，回退到同版本普通模型
     if (model === 'nai-diffusion-3-inpainting') model = 'nai-diffusion-3';
 
-    // 判断是否为 V4 模型
-    const isV4 = model.includes('nai-diffusion-4');
-    const commonSeed = Math.floor(Math.random() * 9999999999);
+    const modelFamily = window.NovelAiVibe?.modelFamily?.(model) || (model.includes('nai-diffusion-4') ? 'v4' : 'v3');
+    const isV4 = modelFamily === 'v4';
+    const isV5 = modelFamily === 'v5';
+    const isModern = isV4 || isV5;
+    const configuredSeed = settings.seed === '' || settings.seed == null ? null : Number(settings.seed);
+    const commonSeed = Number.isFinite(configuredSeed) ? Math.max(0, Math.trunc(configuredSeed)) : Math.floor(Math.random() * 9999999999);
+    const vibe = window.NovelAiVibe?.resolveForGeneration
+        ? await window.NovelAiVibe.resolveForGeneration(model)
+        : { images: [], information: [], strengths: [], groupName: '' };
+    const precise = window.NovelAiVibe?.resolvePreciseReferences
+        ? await window.NovelAiVibe.resolvePreciseReferences(model)
+        : { images: [], strengths: [], fidelity: [], descriptions: [] };
+    const noiseSchedule = settings.noiseSchedule || (isModern ? 'karras' : 'native');
+    const qualityToggle = settings.qualityToggle !== false;
+    const ucPreset = Number.isFinite(Number(settings.ucPreset)) ? Number(settings.ucPreset) : 0;
 
     // 根据模型版本构建不同的请求体
     let requestBody;
-    if (isV4) {
+    if (isModern) {
         requestBody = {
             input: fullPrompt,
             model: model,
@@ -747,15 +777,15 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
                 width, height, scale, sampler, steps,
                 seed: commonSeed,
                 n_samples: 1,
-                ucPreset: 0,
-                qualityToggle: true,
-                autoSmea: false,
+                ucPreset,
+                qualityToggle,
+                autoSmea: !!settings.autoSmea,
                 dynamic_thresholding: false,
                 controlnet_strength: 1,
                 legacy: false,
                 add_original_image: true,
-                cfg_rescale: 0,
-                noise_schedule: 'karras',
+                cfg_rescale: Number(settings.cfgRescale) || 0,
+                noise_schedule: noiseSchedule,
                 legacy_v3_extend: false,
                 skip_cfg_above_sigma: null,
                 use_coords: false,
@@ -776,6 +806,58 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
                 prefer_brownian: true
             }
         };
+        requestBody.parameters.sm = !!settings.smea;
+        requestBody.parameters.sm_dyn = !!settings.smeaDyn;
+        const characterLimit = isV5 ? 22 : 6;
+        const characters = (Array.isArray(settings.characterPrompts) ? settings.characterPrompts : [])
+            .filter(item => String(item?.prompt || '').trim())
+            .slice(0, characterLimit)
+            .map(item => {
+                const x = Number(item.center?.x);
+                const y = Number(item.center?.y);
+                return {
+                    prompt: String(item.prompt).trim(), uc: String(item.uc || '').trim(),
+                    center: {
+                        x: Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : 0.5,
+                        y: Number.isFinite(y) ? Math.min(1, Math.max(0, y)) : 0.5
+                    }
+                };
+            });
+        if (characters.length) {
+            const useCoords = !!settings.characterUseCoords;
+            requestBody.parameters.use_coords = useCoords;
+            requestBody.parameters.characterPrompts = characters;
+            requestBody.parameters.v4_prompt.use_coords = useCoords;
+            requestBody.parameters.v4_prompt.use_order = settings.characterUseOrder !== false;
+            requestBody.parameters.v4_prompt.caption.char_captions = characters.map(item => ({ char_caption: item.prompt, centers: [item.center] }));
+            requestBody.parameters.v4_negative_prompt.caption.char_captions = characters.map(item => ({ char_caption: item.uc, centers: [item.center] }));
+        }
+        if (vibe.images.length) {
+            requestBody.parameters.reference_image_multiple = vibe.images;
+            requestBody.parameters.reference_strength_multiple = vibe.strengths;
+        }
+        if (precise.images.length) {
+            requestBody.parameters.director_reference_images = precise.images;
+            requestBody.parameters.director_reference_descriptions = precise.descriptions.map(description => ({ caption: { base_caption: description, char_captions: [] }, legacy_uc: false }));
+            requestBody.parameters.director_reference_information_extracted = precise.images.map(() => 1);
+            requestBody.parameters.director_reference_strength_values = precise.strengths;
+            requestBody.parameters.director_reference_secondary_strength_values = precise.fidelity;
+        }
+        if (isV5) {
+            requestBody.parameters.params_version = 4;
+            requestBody.parameters.ucPresetId = ['heavy', 'light', 'human_focus', 'none'][ucPreset] || 'heavy';
+            requestBody.parameters.qualityPresetId = 'standard';
+            requestBody.parameters.tag_hint_qt = qualityToggle ? 1 : 0;
+            requestBody.parameters.tag_hint_uc_preset = 2;
+            requestBody.parameters.straight_alpha = true;
+            requestBody.parameters.image_format = settings.imageFormat || 'png';
+            requestBody.parameters.inpaintImg2ImgStrength = 1;
+            delete requestBody.parameters.ucPreset;
+            delete requestBody.parameters.sm;
+            delete requestBody.parameters.sm_dyn;
+            delete requestBody.parameters.qualityToggle;
+            delete requestBody.parameters.skip_cfg_above_sigma;
+        }
     } else {
         // V3 请求格式
         requestBody = {
@@ -786,19 +868,24 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
                 width, height, scale, sampler, steps,
                 seed: commonSeed,
                 n_samples: 1,
-                ucPreset: 0,
-                qualityToggle: true,
-                sm: false,
-                sm_dyn: false,
+                ucPreset,
+                qualityToggle,
+                sm: !!settings.smea,
+                sm_dyn: !!settings.smeaDyn,
                 dynamic_thresholding: false,
                 controlnet_strength: 1,
                 legacy: false,
                 add_original_image: false,
-                cfg_rescale: 0,
-                noise_schedule: 'native',
+                cfg_rescale: Number(settings.cfgRescale) || 0,
+                noise_schedule: noiseSchedule,
                 negative_prompt: fullNegativePrompt
             }
         };
+        if (vibe.images.length) {
+            requestBody.parameters.reference_image_multiple = vibe.images;
+            requestBody.parameters.reference_information_extracted_multiple = vibe.information;
+            requestBody.parameters.reference_strength_multiple = vibe.strengths;
+        }
     }
 
     // 确定 API 地址
@@ -807,19 +894,20 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
         apiUrl = customUrl;
         if ((settings.endpointMode || 'auto') !== 'full' && !apiUrl.includes('/ai/generate-image')) {
             apiUrl = apiUrl.replace(/\/$/, '');
-            const configuredPath = isV4 ? settings.streamPath : settings.generatePath;
-            apiUrl += configuredPath || (isV4 ? '/ai/generate-image-stream' : '/ai/generate-image');
+            const configuredPath = isModern ? settings.streamPath : settings.generatePath;
+            apiUrl += configuredPath || (isModern ? '/ai/generate-image-stream' : '/ai/generate-image');
         }
     } else {
-        // V4 使用 stream 端点，V3 使用普通端点
-        apiUrl = isV4
+        // V4/V4.5/V5 使用 stream 端点，V3 使用普通端点
+        apiUrl = isModern
             ? 'https://image.novelai.net/ai/generate-image-stream'
             : 'https://image.novelai.net/ai/generate-image';
     }
 
-    console.log('[NovelAI] 发送生图请求:', { apiUrl, model, isV4, width, height, steps, scale, sampler });
+    console.log('[NovelAI] 发送生图请求:', { apiUrl, model, modelFamily, width, height, steps, scale, sampler, vibeCount: vibe.images.length, preciseReferenceCount: precise.images.length });
 
-    const requestHeaders = { 'Content-Type': 'application/json' };
+    const correlationId = crypto.randomUUID ? crypto.randomUUID() : `ovo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const requestHeaders = { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream, application/zip, image/*', 'x-correlation-id': correlationId };
     if (authMode === 'bearer' && cleanToken) requestHeaders.Authorization = `Bearer ${cleanToken}`;
     if (authMode === 'header' && cleanToken) requestHeaders[settings.authHeaderName || 'Authorization'] = cleanToken;
     if (settings.extraHeaders && typeof settings.extraHeaders === 'object') Object.assign(requestHeaders, settings.extraHeaders);
@@ -850,6 +938,7 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
         console.log('[NovelAI] 解析 SSE 流式响应...');
         const sseText = await response.text();
         const lines = sseText.trim().split('\n');
+        let streamError = '';
 
         // 从后往前扫描，找到最终的图片数据
         for (let i = lines.length - 1; i >= 0; i--) {
@@ -859,6 +948,10 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
             const payload = line.substring(5).trim();
             try {
                 const obj = JSON.parse(payload);
+                if (obj?.event_type === 'error' || obj?.type === 'error' || obj?.error) {
+                    streamError = obj?.error?.message || obj?.message || obj?.error || '流式生成失败';
+                    continue;
+                }
                 imageDataUrl = await _image_extractFromJson(obj);
                 if (imageDataUrl) break;
             } catch (e) {
@@ -872,7 +965,7 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
 
         if (!imageDataUrl) {
             console.error('[NovelAI] SSE 响应中未找到图片数据, 前500字符:', sseText.substring(0, 500));
-            throw new Error('SSE 响应中未找到图片数据');
+            throw new Error(streamError ? `NovelAI 流式生成失败：${String(streamError).slice(0, 300)}；请求 ID：${correlationId}` : `SSE 响应中未找到图片数据；请求 ID：${correlationId}`);
         }
 
     } else if (contentType.includes('application/json')) {
@@ -921,7 +1014,22 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
     }
 
     console.log('[NovelAI] ✅ 生图成功');
-    return { imageUrl: imageDataUrl, provider: 'novelai', model, size: resolution, seed: commonSeed, atmosphere: merged.atmosphere };
+    const snapshotParameters = { ...requestBody.parameters };
+    delete snapshotParameters.reference_image_multiple;
+    delete snapshotParameters.director_reference_images;
+    return {
+        imageUrl: imageDataUrl, originalImageUrl: imageDataUrl, provider: 'novelai', model,
+        size: resolution, seed: commonSeed, vibeGroup: vibe.groupName || '', vibeCount: vibe.images.length,
+        mimeType: /^data:([^;,]+)/.exec(imageDataUrl)?.[1] || '', correlationId,
+        requestSnapshot: {
+            input: requestBody.input, model: requestBody.model, action: requestBody.action,
+            parameters: snapshotParameters,
+            referenceCount: vibe.images.length,
+            preciseReferenceCount: precise.images.length,
+            referenceStrengths: vibe.strengths,
+            referenceInformationExtracted: isV4 ? undefined : vibe.information
+        }
+    };
 }
 
 /** 使用 Google Gemini 原生图片模型生成图片。 */

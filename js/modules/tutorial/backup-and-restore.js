@@ -6,6 +6,11 @@ async function createFullBackupData() {
             try { backupData[k] = JSON.parse(JSON.stringify(db[k])); } catch (e) { backupData[k] = db[k]; }
         }
     });
+    if (dexieDB?.naiVibeAssets) {
+        backupData.naiVibeAssets = await dexieDB.naiVibeAssets.toArray();
+        backupData.naiVibeEncodings = await dexieDB.naiVibeEncodings.toArray();
+        backupData.naiVibeGroups = await dexieDB.naiVibeGroups.toArray();
+    }
     backupData._exportVersion = '3.0';
     backupData._exportTimestamp = Date.now();
     return backupData;
@@ -26,6 +31,11 @@ async function createPartialBackupData(selectedKeys) {
         if (key === 'globalSettings') {
             result.globalSettings = {};
             keys.forEach(k => { result.globalSettings[k] = db[k] !== undefined ? JSON.parse(JSON.stringify(db[k])) : undefined; });
+            if (dexieDB?.naiVibeAssets) {
+                result.globalSettings.naiVibeAssets = await dexieDB.naiVibeAssets.toArray();
+                result.globalSettings.naiVibeEncodings = await dexieDB.naiVibeEncodings.toArray();
+                result.globalSettings.naiVibeGroups = await dexieDB.naiVibeGroups.toArray();
+            }
         } else if (key === 'theaterData') {
             result.theaterData = {};
             THEATER_DB_KEYS.forEach(k => { result.theaterData[k] = db[k] !== undefined ? JSON.parse(JSON.stringify(db[k])) : undefined; });
@@ -52,12 +62,14 @@ function getBackupDataKeys(selectedKeys) {
         allGlobalKeys.forEach(key => {
             if (db[key] !== undefined) keys.add(key);
         });
+        ['naiVibeAssets', 'naiVibeEncodings', 'naiVibeGroups'].forEach(key => keys.add(key));
     } else {
         selectedKeys.forEach(key => {
             if (key === 'globalSettings') {
                 allGlobalKeys.forEach(settingKey => {
                     if (db[settingKey] !== undefined) keys.add(settingKey);
                 });
+                ['naiVibeAssets', 'naiVibeEncodings', 'naiVibeGroups'].forEach(vibeKey => keys.add(vibeKey));
             } else if (key === 'theaterData') {
                 THEATER_DB_KEYS.forEach(theaterKey => {
                     if (db[theaterKey] !== undefined) keys.add(theaterKey);
@@ -118,7 +130,9 @@ async function* createBackupRecordStream(options = {}) {
     });
 
     for (const key of dataKeys) {
-        const value = db[key];
+        const value = /^naiVibe(?:Assets|Encodings|Groups)$/.test(key) && dexieDB?.[key]
+            ? await dexieDB[key].toArray()
+            : db[key];
         if (value === undefined) continue;
 
         if ((key === 'characters' || key === 'groups') && Array.isArray(value)) {
@@ -433,6 +447,9 @@ function getDexieTableForBackupKey(key, staging = false) {
     if (key === 'worldBooks') return staging ? dexieDB.importWorldBooks : dexieDB.worldBooks;
     if (key === 'myStickers') return staging ? dexieDB.importMyStickers : dexieDB.myStickers;
     if (key === 'archives' && dexieDB.archives) return staging ? dexieDB.importArchives : dexieDB.archives;
+    if (key === 'naiVibeAssets' && dexieDB.naiVibeAssets) return staging ? dexieDB.importNaiVibeAssets : dexieDB.naiVibeAssets;
+    if (key === 'naiVibeEncodings' && dexieDB.naiVibeEncodings) return staging ? dexieDB.importNaiVibeEncodings : dexieDB.naiVibeEncodings;
+    if (key === 'naiVibeGroups' && dexieDB.naiVibeGroups) return staging ? dexieDB.importNaiVibeGroups : dexieDB.naiVibeGroups;
     return null;
 }
 
@@ -443,7 +460,10 @@ function getImportStagingTables() {
         dexieDB.importWorldBooks,
         dexieDB.importMyStickers,
         dexieDB.importArchives,
-        dexieDB.importGlobalSettings
+        dexieDB.importGlobalSettings,
+        dexieDB.importNaiVibeAssets,
+        dexieDB.importNaiVibeEncodings,
+        dexieDB.importNaiVibeGroups
     ].filter(Boolean);
 }
 
@@ -464,7 +484,10 @@ async function commitImportStaging(isPartial) {
         dexieDB.worldBooks,
         dexieDB.myStickers,
         dexieDB.globalSettings,
-        dexieDB.archives
+        dexieDB.archives,
+        dexieDB.naiVibeAssets,
+        dexieDB.naiVibeEncodings,
+        dexieDB.naiVibeGroups
     ].filter(Boolean);
     const stagingTables = getImportStagingTables();
     await dexieDB.transaction('rw', [...coreTables, ...stagingTables], async () => {
@@ -476,6 +499,9 @@ async function commitImportStaging(isPartial) {
         if (dexieDB.archives && dexieDB.importArchives) {
             await copyDexieTableRecords(dexieDB.importArchives, dexieDB.archives);
         }
+        await copyDexieTableRecords(dexieDB.importNaiVibeAssets, dexieDB.naiVibeAssets);
+        await copyDexieTableRecords(dexieDB.importNaiVibeEncodings, dexieDB.naiVibeEncodings);
+        await copyDexieTableRecords(dexieDB.importNaiVibeGroups, dexieDB.naiVibeGroups);
         await copyDexieTableRecords(dexieDB.importGlobalSettings, dexieDB.globalSettings);
         await Promise.all(stagingTables.map(table => table.clear()));
     });
@@ -608,7 +634,7 @@ window.importStreamBackupData = importStreamBackupData;
 
 async function stageBackupObject(data, isPartial) {
     await clearImportStaging();
-    const tableKeys = new Set(['characters', 'groups', 'worldBooks', 'myStickers', 'archives']);
+    const tableKeys = new Set(['characters', 'groups', 'worldBooks', 'myStickers', 'archives', 'naiVibeAssets', 'naiVibeEncodings', 'naiVibeGroups']);
     try {
         for (const [key, value] of Object.entries(data)) {
             if (key.startsWith('_export') || key === '__chunks__' || value === undefined) continue;

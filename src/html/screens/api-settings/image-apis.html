@@ -79,13 +79,13 @@
                         <div id="stability-image-test-preview" style="display:none;margin-top:15px;text-align:center;"><img id="stability-image-test-image" alt="Stability 生图测试结果" style="max-width:100%;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.15);"></div>
                     </div>
 
-                    <!-- 跨平台生图氛围组 -->
-                    <div class="kkt-group" style="margin-top:30px;padding-top:20px;border-top:2px solid #eee;">
+                    <!-- 旧文字预设：保留历史数据的查看、编辑和导入导出能力，但不再伪装成 NovelAI VIBE。 -->
+                    <details class="kkt-group" style="margin-top:30px;padding-top:20px;border-top:2px solid #eee;">
+                        <summary style="font-size:14px;color:#777;cursor:pointer;padding:4px 0;">旧文字氛围预设（兼容保留）</summary>
                         <div style="margin-bottom:15px;">
-                            <h3 style="margin:0;font-size:16px;color:var(--primary-color);">生图氛围组</h3>
-                            <p style="font-size:12px;color:#999;margin:5px 0 0;">当前氛围会自动应用到 GPT、NovelAI、Google 和 Stability</p>
+                            <p style="font-size:12px;color:#999;margin:7px 0 0;">这是旧的文字附加词预设，不是 NovelAI VIBE。历史内容仍可编辑和导入导出，但不会再自动注入任何平台的生图请求。</p>
                         </div>
-                        <div class="kkt-item"><div class="kkt-item-label">当前氛围</div><div class="kkt-item-control" style="flex:1;min-width:0;"><select id="image-atmosphere-select" style="width:100%;border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="">不使用氛围组</option></select><span class="kkt-arrow">›</span></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">当前预设</div><div class="kkt-item-control" style="flex:1;min-width:0;"><select id="image-atmosphere-select" style="width:100%;border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="">不选择旧文字预设</option></select><span class="kkt-arrow">›</span></div></div>
                         <div class="kkt-item"><div class="kkt-item-label">名称</div><div class="kkt-item-control"><input type="text" id="image-atmosphere-name" maxlength="50" placeholder="例如：雨夜电影感" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
                         <div class="kkt-item" style="flex-direction:column;align-items:stretch;padding-bottom:15px;"><div class="kkt-item-label" style="margin-bottom:8px;">通用氛围描述</div><textarea id="image-atmosphere-prompt" rows="3" placeholder="场景、时间、天气、光线、色彩、情绪、构图、镜头和质感" style="width:100%;padding:8px;border:1px solid #e0e0e0;border-radius:8px;resize:vertical;font-size:13px;box-sizing:border-box;"></textarea></div>
                         <div class="kkt-item" style="flex-direction:column;align-items:stretch;padding-bottom:15px;"><div class="kkt-item-label" style="margin-bottom:8px;">通用负面限制</div><textarea id="image-atmosphere-negative" rows="2" placeholder="不希望出现的内容" style="width:100%;padding:8px;border:1px solid #e0e0e0;border-radius:8px;resize:vertical;font-size:13px;box-sizing:border-box;"></textarea></div>
@@ -102,7 +102,7 @@
                             <button type="button" id="image-atmosphere-import" class="btn btn-small" style="flex:1;min-width:68px;">导入</button>
                             <button type="button" id="image-atmosphere-export" class="btn btn-small" style="flex:1;min-width:68px;">导出</button>
                         </div>
-                    </div>
+                    </details>
 
                     <!-- 副API 6: 表情包识图专用 API -->
                     <div class="kkt-group collapsible-section" style="margin-top: 30px; padding-top: 0; border-top: 2px solid #eee;">
@@ -448,9 +448,70 @@
                             <div class="kkt-item"><div class="kkt-item-label">鉴权方式</div><div class="kkt-item-control"><select id="novelai-auth-mode" style="border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="bearer">Bearer Token</option><option value="header">自定义请求头</option><option value="query">查询参数</option><option value="none">无需鉴权</option></select><span class="kkt-arrow">›</span></div></div>
                             <div class="kkt-item"><div class="kkt-item-label">普通生成路径</div><div class="kkt-item-control"><input type="text" id="novelai-generate-path" placeholder="/ai/generate-image" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
                             <div class="kkt-item"><div class="kkt-item-label">流式生成路径</div><div class="kkt-item-control"><input type="text" id="novelai-stream-path" placeholder="/ai/generate-image-stream" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">VIBE 编码路径</div><div class="kkt-item-control"><input type="text" id="novelai-encode-vibe-path" placeholder="/ai/encode-vibe" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
                             <div class="kkt-item"><div class="kkt-item-label">自定义鉴权名称</div><div class="kkt-item-control"><input type="text" id="novelai-auth-name" placeholder="Authorization 或 key" style="text-align:right;border:none;background:transparent;width:100%;min-width:0;"></div></div>
                             <div class="kkt-item" style="flex-direction:column;align-items:stretch;padding-bottom:15px;"><div class="kkt-item-label" style="margin-bottom:8px;">额外请求头 JSON</div><textarea id="novelai-extra-headers" rows="2" placeholder='例如：{"X-Custom-Key":"value"}' style="width:100%;padding:8px;border:1px solid #e0e0e0;border-radius:8px;resize:vertical;font-size:13px;box-sizing:border-box;"></textarea></div>
                         </div>
+
+                        <div id="novelai-vibe-panel" class="kkt-group" style="margin:15px 0;padding:12px;border:1px solid #eee;border-radius:10px;box-sizing:border-box;">
+                            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:6px;">
+                                <div style="min-width:0;">
+                                    <div class="kkt-item-label" style="font-weight:600;color:var(--primary-color);">NovelAI VIBE 氛围组</div>
+                                    <p id="novelai-vibe-model-status" style="font-size:11px;color:#888;margin:3px 0 0;"></p>
+                                </div>
+                                <label class="kkt-switch" style="flex-shrink:0;"><input type="checkbox" id="novelai-vibe-enabled"><span class="kkt-slider"></span></label>
+                            </div>
+                            <p style="font-size:11px;color:#999;line-height:1.5;margin:5px 0 10px;">VIBE 使用图片或官方编码迁移视觉风格，不是提示词。V4/V4.5 每个新编码通常消耗 2 Anlas；每次生成超过 4 个 VIBE 时，额外项会增加费用。</p>
+                            <div class="kkt-item"><div class="kkt-item-label">当前组</div><div class="kkt-item-control" style="flex:1;min-width:0;"><select id="novelai-vibe-group" style="max-width:100%;border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="">不使用 VIBE 组</option></select><span class="kkt-arrow">›</span></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">组名称</div><div class="kkt-item-control" style="flex:1;min-width:0;"><input id="novelai-vibe-group-name" maxlength="50" placeholder="例如：柔光电影感" style="width:100%;min-width:0;text-align:right;border:none;background:transparent;"></div></div>
+                            <div id="novelai-vibe-list"></div>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                                <button type="button" id="novelai-vibe-add-images" class="btn btn-small" style="flex:1;min-width:94px;font-size:11px;">添加参考图</button>
+                                <button type="button" id="novelai-vibe-import" class="btn btn-small" style="flex:1;min-width:94px;font-size:11px;">导入原生 VIBE</button>
+                                <button type="button" id="novelai-vibe-encode" class="btn btn-small" style="flex:1;min-width:94px;font-size:11px;">编码缺失项</button>
+                            </div>
+                            <div class="kkt-item" style="margin-top:5px;"><div class="kkt-item-label" style="font-size:12px;">总强度超过 1 时归一化</div><div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="novelai-vibe-normalize" checked><span class="kkt-slider"></span></label></div></div>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                                <button type="button" id="novelai-vibe-new" class="btn btn-small" style="flex:1;min-width:58px;font-size:11px;">新建</button>
+                                <button type="button" id="novelai-vibe-save" class="btn btn-primary btn-small" style="flex:1;min-width:58px;font-size:11px;">保存</button>
+                                <button type="button" id="novelai-vibe-delete" class="btn btn-danger btn-small" style="flex:1;min-width:58px;font-size:11px;">删除组</button>
+                                <button type="button" id="novelai-vibe-export" class="btn btn-small" style="flex:1;min-width:72px;font-size:11px;">导出组包</button>
+                                <button type="button" id="novelai-vibe-export-encodings" class="btn btn-small" style="flex:1;min-width:80px;font-size:11px;">仅导出编码</button>
+                            </div>
+                        </div>
+
+                        <div class="kkt-item"><div class="kkt-item-label">生图模型</div><div class="kkt-item-control" style="flex:1;min-width:0;"><select id="novelai-api-model" style="max-width:100%;border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="nai-diffusion-5-full">NAI Diffusion V5 Full（最新）</option><option value="nai-diffusion-5-curated">NAI Diffusion V5 Curated</option><option value="nai-diffusion-4-5-full">NAI Diffusion 4.5 Full</option><option value="nai-diffusion-4-5-curated">NAI Diffusion 4.5 Curated</option><option value="nai-diffusion-4-full">NAI Diffusion 4 Full</option><option value="nai-diffusion-4-curated-preview">NAI Diffusion 4 Curated</option><option value="nai-diffusion-3">NAI Diffusion 3</option><option value="nai-diffusion-furry-3">NAI Diffusion Furry 3</option></select><span class="kkt-arrow">›</span></div></div>
+
+                        <div id="novelai-precise-panel" class="kkt-group" style="margin:15px 0;padding:12px;border:1px solid #eee;border-radius:10px;box-sizing:border-box;">
+                            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+                                <div style="min-width:0;"><div class="kkt-item-label" style="font-weight:600;color:var(--primary-color);">V4.5 Precise Reference</div><p id="novelai-precise-status" style="font-size:11px;color:#888;margin:3px 0 0;">仅 V4.5 可用，与 VIBE 互斥</p></div>
+                                <label class="kkt-switch" style="flex-shrink:0;"><input type="checkbox" id="novelai-precise-enabled"><span class="kkt-slider"></span></label>
+                            </div>
+                            <p style="font-size:11px;color:#999;line-height:1.5;margin:6px 0 8px;">用于更准确地参考角色、风格或两者；每张参考图每次生成额外消耗 5 Anlas。</p>
+                            <div id="novelai-precise-list"></div>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;"><button type="button" id="novelai-precise-add" class="btn btn-small" style="flex:1;min-width:92px;font-size:11px;">添加参考图</button><button type="button" id="novelai-precise-clear" class="btn btn-small" style="flex:1;min-width:92px;font-size:11px;">清空参考图</button></div>
+                        </div>
+
+                        <details id="novelai-character-panel" style="margin:10px 0;"><summary style="font-size:12px;color:#777;cursor:pointer;padding:7px 0;">多角色提示（V4/V4.5 最多 6 个，V5 最多 22 个）</summary>
+                            <p id="novelai-character-status" style="font-size:11px;color:#999;margin:2px 0 8px;">每个角色可独立设置正面、负面提示和画面中心位置。</p>
+                            <div class="kkt-item"><div class="kkt-item-label" style="font-size:12px;">启用坐标</div><div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="novelai-character-use-coords"><span class="kkt-slider"></span></label></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label" style="font-size:12px;">按列表顺序处理</div><div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="novelai-character-use-order" checked><span class="kkt-slider"></span></label></div></div>
+                            <div id="novelai-character-list"></div>
+                            <button type="button" id="novelai-character-add" class="btn btn-small" style="width:100%;font-size:11px;margin-top:7px;">添加角色提示</button>
+                        </details>
+
+                        <div class="kkt-item"><div class="kkt-item-label">采样器</div><div class="kkt-item-control"><select id="novelai-sampler" style="border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="k_euler_ancestral">Euler Ancestral</option><option value="k_dpmpp_2m">DPM++ 2M</option><option value="k_euler">Euler</option><option value="k_dpmpp_2s_ancestral">DPM++ 2S Ancestral</option><option value="k_dpmpp_sde">DPM++ SDE</option><option value="ddim_v3">DDIM</option></select><span class="kkt-arrow">›</span></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">噪声计划</div><div class="kkt-item-control"><select id="novelai-noise-schedule" style="border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="karras">Karras</option><option value="native">Native</option><option value="exponential">Exponential</option><option value="polyexponential">Polyexponential</option></select><span class="kkt-arrow">›</span></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">质量标签</div><div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="novelai-quality-toggle" checked><span class="kkt-slider"></span></label></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">负面预设</div><div class="kkt-item-control"><select id="novelai-uc-preset" style="border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="0">Heavy</option><option value="1">Light</option><option value="2">Human Focus</option><option value="3">None</option></select><span class="kkt-arrow">›</span></div></div>
+                        <details style="margin:4px 0 10px;"><summary style="font-size:12px;color:#777;cursor:pointer;padding:7px 0;">高级采样参数</summary>
+                            <div class="kkt-item"><div class="kkt-item-label">SMEA</div><div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="novelai-smea"><span class="kkt-slider"></span></label></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">SMEA DYN</div><div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="novelai-smea-dyn"><span class="kkt-slider"></span></label></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">自动 SMEA</div><div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="novelai-auto-smea"><span class="kkt-slider"></span></label></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">CFG Rescale</div><div class="kkt-item-control"><input type="number" id="novelai-cfg-rescale" min="0" max="1" step="0.05" value="0" style="width:70px;text-align:right;border:none;background:transparent;"></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">Seed</div><div class="kkt-item-control"><input type="number" id="novelai-seed" min="0" step="1" placeholder="随机" style="width:120px;max-width:100%;text-align:right;border:none;background:transparent;"></div></div>
+                            <div class="kkt-item"><div class="kkt-item-label">输出格式（V5）</div><div class="kkt-item-control"><select id="novelai-image-format" style="border:none;background:transparent;text-align:right;direction:rtl;appearance:none;-webkit-appearance:none;padding-right:15px;"><option value="png">PNG（保留元数据/透明）</option><option value="webp">WebP</option></select><span class="kkt-arrow">›</span></div></div>
+                        </details>
 
                         <div class="kkt-item" style="flex-direction: column; align-items: stretch; padding-bottom: 15px;">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">

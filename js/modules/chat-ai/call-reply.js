@@ -1,4 +1,135 @@
-async function getCallReply(chat, callType, callContext, onStreamUpdate) {
+function normalizeCallResponseContent(content) {
+    if (typeof content === 'string') return content;
+    if (!Array.isArray(content)) return '';
+    return content.map(part => {
+        if (typeof part === 'string') return part;
+        if (!part || typeof part !== 'object') return '';
+        return typeof part.text === 'string' ? part.text
+            : (typeof part.content === 'string' ? part.content : '');
+    }).join('');
+}
+
+function extractCallResponseText(payload, provider, useDelta = false) {
+    if (!payload) return '';
+    if (Array.isArray(payload)) {
+        return payload.map(item => extractCallResponseText(item, provider, useDelta)).join('');
+    }
+
+    const geminiText = (payload.candidates || []).map(candidate => {
+        const parts = candidate && candidate.content && candidate.content.parts;
+        return Array.isArray(parts) ? parts.map(part => part && part.text || '').join('') : '';
+    }).join('');
+    if (provider === 'gemini' || geminiText) return geminiText;
+
+    const choice = payload.choices && payload.choices[0];
+    if (choice) {
+        const source = useDelta ? (choice.delta || choice.message) : (choice.message || choice.delta);
+        const choiceText = normalizeCallResponseContent(source && source.content);
+        if (choiceText) return choiceText;
+        if (typeof choice.text === 'string') return choice.text;
+    }
+
+    if (typeof payload.output_text === 'string') return payload.output_text;
+    if (Array.isArray(payload.output)) {
+        return payload.output.map(item => normalizeCallResponseContent(item && item.content)).join('');
+    }
+    return '';
+}
+
+function parseCallStreamBlock(rawBlock, provider) {
+    const block = String(rawBlock || '').trim();
+    if (!block) return { text: '', parsed: false };
+
+    const dataLines = block.split(/\r?\n/)
+        .filter(line => /^data\s*:/.test(line))
+        .map(line => line.replace(/^data\s*:\s?/, ''));
+    if (dataLines.length) {
+        const joinedValue = dataLines.join('\n').trim();
+        if (!joinedValue || joinedValue === '[DONE]') return { text: '', parsed: true };
+        try {
+            return { text: extractCallResponseText(JSON.parse(joinedValue), provider, true), parsed: true };
+        } catch (error) {
+            let text = '';
+            let parsed = false;
+            for (const dataLine of dataLines) {
+                const value = dataLine.trim();
+                if (!value || value === '[DONE]') {
+                    parsed = true;
+                    continue;
+                }
+                try {
+                    text += extractCallResponseText(JSON.parse(value), provider, true);
+                    parsed = true;
+                } catch (lineError) {
+                    // Continue so one malformed event cannot discard later valid events.
+                }
+            }
+            return { text, parsed };
+        }
+    }
+
+    try {
+        return { text: extractCallResponseText(JSON.parse(block), provider, true), parsed: true };
+    } catch (error) {
+        // Fall through to NDJSON parsing.
+    }
+
+    let text = '';
+    let parsed = false;
+    for (const line of block.split(/\r?\n/)) {
+        const value = line.replace(/^data\s*:\s?/, '').trim();
+        if (!value || value === '[DONE]' || value.startsWith(':')) continue;
+        try {
+            text += extractCallResponseText(JSON.parse(value), provider, true);
+            parsed = true;
+        } catch (error) {
+            // The caller reports the aggregate parsing failure without exposing content.
+        }
+    }
+    return { text, parsed };
+}
+
+async function readCallStreamResponse(response, provider) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let pending = '';
+    let text = '';
+    let parsedBlocks = 0;
+    let failedBlocks = 0;
+
+    const consume = block => {
+        const result = parseCallStreamBlock(block, provider);
+        if (result.parsed) {
+            parsedBlocks += 1;
+            text += result.text;
+        } else if (String(block || '').trim()) {
+            failedBlocks += 1;
+        }
+    };
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        pending += decoder.decode(value, { stream: true });
+        const blocks = pending.split(/\r?\n\r?\n/);
+        pending = blocks.pop();
+        blocks.forEach(consume);
+    }
+
+    pending += decoder.decode();
+    if (pending.trim()) consume(pending);
+
+    if (failedBlocks) {
+        console.warn('[VideoCall] Some stream blocks could not be parsed:', {
+            provider,
+            parsedBlocks,
+            failedBlocks
+        });
+    }
+    return text;
+}
+
+async function getCallReply(chat, callType, callContext, onStreamUpdate, options = {}) {
     let {url, key, model, provider, streamEnabled} = db.apiSettings;
     
     // 【用户设置】移除强制关闭流式，允许后台流式生成
@@ -9,6 +140,17 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate) {
         return;
     }
     if (url.endsWith('/')) url = url.slice(0, -1);
+
+    if (chat.memoryMode === 'vector' && typeof prepareVectorMemoryContext === 'function') {
+        try {
+            const callQuery = (callContext || []).slice(-6)
+                .map(message => `${message.role === 'user' ? (chat.myName || '用户') : (chat.realName || '角色')}: ${message.content || ''}`)
+                .join('\n');
+            await prepareVectorMemoryContext(chat, { queryText: callQuery || undefined });
+        } catch (error) {
+            console.warn('[VectorMemory] call context fallback:', error);
+        }
+    }
 
     // 1. 构建 System Prompt
     const now = new Date();
@@ -276,23 +418,36 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate) {
         // 合并所有 system 消息到 system_instruction
         const allSystemPrompts = messages.filter(m => m.role === 'system').map(m => m.content).join('\n\n');
         requestBody.system_instruction = {parts: [{text: allSystemPrompts}]};
+        requestBody.generationConfig = { temperature: requestBody.temperature };
         
         delete requestBody.messages;
+        delete requestBody.model;
+        delete requestBody.stream;
+        delete requestBody.temperature;
     }
 
-    const endpoint = (provider === 'gemini') ? `${url}/v1beta/models/${model}:streamGenerateContent?key=${getRandomValue(key)}` : `${url}/v1/chat/completions`;
+    const geminiMethod = streamEnabled ? 'streamGenerateContent' : 'generateContent';
+    const endpoint = (provider === 'gemini') ? `${url}/v1beta/models/${model}:${geminiMethod}?key=${getRandomValue(key)}` : `${url}/v1/chat/completions`;
     const headers = (provider === 'gemini') ? {'Content-Type': 'application/json'} : {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${key}`
     };
 
-    console.log('[VideoCall] Request Body:', JSON.stringify(requestBody, null, 2));
+    console.log('[VideoCall] Request:', {
+        provider,
+        model,
+        stream: !!streamEnabled,
+        callType,
+        messageCount: messages.length,
+        hasCameraFrame: !!capturedFrame
+    });
 
     try {
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: headers,
-            body: JSON.stringify(requestBody)
+            body: JSON.stringify(requestBody),
+            signal: options.signal
         });
 
         if (!response.ok) {
@@ -302,17 +457,13 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate) {
 
         if (!streamEnabled) {
             const data = await response.json();
-            console.log('[VideoCall] Response Data:', data);
-            
-            let text = "";
-            if (provider === 'gemini') {
-                text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-            } else {
-                if (!data.choices || !data.choices.length || !data.choices[0].message) {
-                    console.error("Invalid API Response Structure:", data);
-                    throw new Error("API返回数据格式异常，缺少 choices 或 message 字段");
-                }
-                text = data.choices[0].message.content;
+            let text = extractCallResponseText(data, provider, false);
+            if (!text && provider !== 'gemini' && (!data.choices || !data.choices.length)) {
+                console.error("Invalid API Response Structure:", {
+                    provider,
+                    topLevelKeys: data && typeof data === 'object' ? Object.keys(data) : []
+                });
+                throw new Error("API返回数据格式异常，缺少可识别的回复字段");
             }
 
             // === CoT 处理：补全开头，提取思考，净化输出 ===
@@ -331,8 +482,7 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate) {
                 // 2. 提取并移除思考内容
                 const thinkingMatch = text.match(/<thinking>([\s\S]*?)<\/thinking>/);
                 if (thinkingMatch) {
-                    const thinkingContent = thinkingMatch[1];
-                    console.log('[VideoCall CoT] Thinking:', thinkingContent);
+                    console.log('[VideoCall CoT] Thinking removed:', { length: thinkingMatch[1].length });
                     // 移除思考标签及内容
                     text = text.replace(/<thinking>[\s\S]*?<\/thinking>/, "").trim();
                 }
@@ -342,61 +492,15 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate) {
             }
             // =============================================
 
-            console.log('[VideoCall] Cleaned AI Response:', text);
+            console.log('[VideoCall] Response parsed:', { provider, textLength: text.length, streamed: false });
             // 一次性回调
             onStreamUpdate(text);
             return text;
         } else {
             console.log('[VideoCall] Stream started (Background Mode)...');
-            // 流式处理 (照搬 processStream 逻辑)
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = "";
-            let accumulatedChunk = ""; // 引入累积缓冲区处理跨包数据
-            
-            while (true) {
-                const {done, value} = await reader.read();
-                if (done) break;
-                accumulatedChunk += decoder.decode(value, {stream: true});
-                
-                // OpenAI / DeepSeek / Claude / NewAPI 解析逻辑 (处理跨包)
-                if (provider === "openai" || provider === "deepseek" || provider === "claude" || provider === "newapi") {
-                    const parts = accumulatedChunk.split("\n\n");
-                    accumulatedChunk = parts.pop(); // 保留未完成的部分
-                    for (const part of parts) {
-                        if (part.startsWith("data: ")) {
-                            const data = part.substring(6);
-                            if (data.trim() !== "[DONE]") {
-                                try {
-                                    const text = JSON.parse(data).choices[0].delta?.content || "";
-                                    if (text) {
-                                        buffer += text;
-                                    }
-                                } catch (e) { }
-                            }
-                        }
-                    }
-                }
-            }
+            let buffer = await readCallStreamResponse(response, provider);
 
-            // Gemini 解析逻辑 (在流结束后处理完整 JSON)
-            if (provider === "gemini") {
-                try {
-                    // 尝试解析累积的 chunk (Gemini 流式返回的是完整的 JSON 数组片段？需确认 processStream 逻辑)
-                    // processStream 中 Gemini 解析是在循环外的，假设 accumulatedChunk 是完整的 JSON 数组
-                    // 但如果 accumulatedChunk 是多个 JSON 对象的拼接（如 OpenAI 格式），JSON.parse 会失败。
-                    // 这里假设 processStream 的逻辑是正确的：
-                    const parsedStream = JSON.parse(accumulatedChunk);
-                    buffer = parsedStream.map(item => item.candidates?.[0]?.content?.parts?.[0]?.text || "").join('');
-                } catch (e) {
-                    console.error("Error parsing Gemini stream:", e, "Chunk:", accumulatedChunk);
-                    // 兜底：如果解析失败，可能是因为 accumulatedChunk 包含了 OpenAI 格式的数据（如果用户选错 provider）
-                    // 尝试用 OpenAI 逻辑解析一下？
-                    // 暂时不加，保持与 processStream 一致
-                }
-            }
-
-            console.log('[VideoCall] Final Buffer:', buffer);
+            console.log('[VideoCall] Stream collected:', { provider, textLength: buffer.length });
 
             // === CoT 处理：补全开头，提取思考，净化输出 ===
             let useCharCotStream = false;
@@ -414,8 +518,7 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate) {
                 // 2. 提取并移除思考内容
                 const thinkingMatch = buffer.match(/<thinking>([\s\S]*?)<\/thinking>/);
                 if (thinkingMatch) {
-                    const thinkingContent = thinkingMatch[1];
-                    console.log('[VideoCall CoT] Thinking:', thinkingContent);
+                    console.log('[VideoCall CoT] Thinking removed:', { length: thinkingMatch[1].length });
                     // 移除思考标签及内容
                     buffer = buffer.replace(/<thinking>[\s\S]*?<\/thinking>/, "").trim();
                 }
@@ -429,6 +532,7 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate) {
             return buffer;
         }
     } catch (e) {
+        if (e && e.name === 'AbortError') return null;
         console.error("Call API Error:", e);
         showToast("通话连接不稳定...");
         return null;

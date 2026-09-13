@@ -34,9 +34,14 @@ window._scheduleBackgroundNaiGen = function(msgId, chatId, chatType, pvContent) 
                 finalImageUrl = result.imageUrl;
                 finalMetadata = {
                     provider: result.provider || db.activeImageProvider || '', model: result.model || '',
-                    size: result.size || '', seed: result.seed ?? null, atmosphere: result.atmosphere || '', generatedAt: Date.now()
+                    size: result.size || '', seed: result.seed ?? null, atmosphere: result.atmosphere || '',
+                    vibeGroup: result.vibeGroup || '', vibeCount: result.vibeCount || 0,
+                    mimeType: result.mimeType || '', correlationId: result.correlationId || '',
+                    requestSnapshot: result.requestSnapshot || null,
+                    originalImageUrl: result.originalImageUrl || result.imageUrl,
+                    generatedAt: Date.now()
                 };
-                // 如果开启了自动压缩，则先压缩
+                // 自动压缩只生成聊天预览；原始文件单独保留，下载时不丢 PNG 元数据或透明通道。
                 if (db.autoCompressImage !== false) {
                     try {
                         const blob = await fetch(finalImageUrl).then(res => res.blob());

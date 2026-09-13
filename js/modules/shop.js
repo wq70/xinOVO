@@ -650,6 +650,14 @@ async function fetchShopData() {
     const chat = db.characters.find(c => c.id === currentChatId);
     if (!chat) return; // 应该不会发生
 
+    if (chat.memoryMode === 'vector' && typeof prepareVectorMemoryContext === 'function') {
+        try {
+            await prepareVectorMemoryContext(chat);
+        } catch (error) {
+            console.warn('[VectorMemory] shop context fallback:', error);
+        }
+    }
+
     const contextPrompt = generatePrivateSystemPrompt(chat);
 
     // 截取最近 100 条消息作为参考
