@@ -9,7 +9,9 @@
 .search-header {
     background-color: #fff;
     padding: 10px 15px;
-    padding-top: max(10px, env(safe-area-inset-top));
+    padding-right: max(15px, var(--ovo-safe-area-right));
+    padding-left: max(15px, var(--ovo-safe-area-left));
+    padding-top: max(10px, var(--ovo-safe-area-top));
     display: flex;
     align-items: center;
     gap: 10px;

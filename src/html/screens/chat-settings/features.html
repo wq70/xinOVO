@@ -314,6 +314,97 @@
                                 </div>
                             </div>
 
+                            <!-- 角色自主购物：保留原商城互动能力，以下权限仅约束真实扣款行为 -->
+                            <div class="kkt-group" style="margin-top:15px;">
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">允许角色自主购物</div>
+                                    <div class="kkt-item-control">
+                                        <label class="kkt-switch">
+                                            <input type="checkbox" id="setting-autonomous-shopping-enabled">
+                                            <span class="kkt-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">使用角色自己的钱包</div>
+                                    <div class="kkt-item-control">
+                                        <label class="kkt-switch">
+                                            <input type="checkbox" id="setting-character-own-wallet-shopping-enabled" checked>
+                                            <span class="kkt-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">允许角色使用我的亲属卡</div>
+                                    <div class="kkt-item-control">
+                                        <label class="kkt-switch">
+                                            <input type="checkbox" id="setting-character-family-card-spending-enabled">
+                                            <span class="kkt-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">允许给自己买东西</div>
+                                    <div class="kkt-item-control">
+                                        <label class="kkt-switch">
+                                            <input type="checkbox" id="setting-character-self-shopping-enabled" checked>
+                                            <span class="kkt-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">允许给我买东西</div>
+                                    <div class="kkt-item-control">
+                                        <label class="kkt-switch">
+                                            <input type="checkbox" id="setting-character-gift-shopping-enabled" checked>
+                                            <span class="kkt-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">允许向我发起代付</div>
+                                    <div class="kkt-item-control">
+                                        <label class="kkt-switch">
+                                            <input type="checkbox" id="setting-character-pay-request-enabled" checked>
+                                            <span class="kkt-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">单笔消费上限</div>
+                                    <div class="kkt-item-control" style="gap:4px;">
+                                        <input type="number" id="setting-character-shopping-single-limit" value="200" min="0" step="1" style="width:66px;text-align:right;border:none;background:rgba(0,0,0,0.05);border-radius:4px;padding:4px 6px;">
+                                        <span style="font-size:12px;color:#999;">元</span>
+                                    </div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">周期消费预算</div>
+                                    <div class="kkt-item-control" style="gap:4px;">
+                                        <input type="number" id="setting-character-shopping-period-budget" value="1000" min="0" step="1" style="width:66px;text-align:right;border:none;background:rgba(0,0,0,0.05);border-radius:4px;padding:4px 6px;">
+                                        <span style="font-size:12px;color:#999;">元</span>
+                                    </div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">自主购物频率</div>
+                                    <div class="kkt-item-control">
+                                        <select id="setting-character-shopping-frequency" style="border:none;background:transparent;text-align:right;font-size:13px;color:#555;">
+                                            <option value="rare">偶尔</option>
+                                            <option value="normal">适中</option>
+                                            <option value="active">活跃</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">允许购买类型</div>
+                                    <div class="kkt-item-control" style="flex:1;justify-content:flex-end;min-width:0;">
+                                        <input type="text" id="setting-character-shopping-categories" placeholder="留空不限制" style="width:132px;max-width:100%;min-width:0;text-align:right;border:none;background:rgba(0,0,0,0.05);border-radius:4px;padding:4px 6px;font-size:12px;">
+                                    </div>
+                                </div>
+                                <div class="kkt-item" style="padding-top:0;">
+                                    <p class="kkt-item-hint" style="font-size:11px;color:#aaa;margin:0;line-height:1.5;">角色只会在正常聊天或原本触发的后台消息中购物，不会因消费额外触发后台回复。使用你的亲属卡默认关闭。</p>
+                                </div>
+                            </div>
+
                             <!-- 提醒事项设置 -->
                             <div class="kkt-group" style="margin-top:15px;">
                                 <div class="kkt-item">

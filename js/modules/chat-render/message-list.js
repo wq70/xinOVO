@@ -151,7 +151,7 @@ function renderMessages(isLoadMore = false, forceScrollToBottom = false) {
                 for (let i = currentIndexInHistory + 1; i < displayHistory.length; i++) {
                     const nextMsg = displayHistory[i];
                     // 跳过隐藏消息
-                    if (nextMsg.hiddenFromDisplay || nextMsg.isNodeBoundary || nextMsg.isThinking) continue;
+                    if (nextMsg.hiddenFromDisplay || nextMsg.isNodeBoundary || (nextMsg.isThinking && nextMsg.thinkingDisplay !== 'summary' && nextMsg.thinkingDisplay !== 'detail')) continue;
                     
                     // 如果下一条消息是同一个发送者，且带有相同的摘要，则当前消息不是最后一条
                     const currentSender = msg.role === 'user' ? 'user' : (msg.senderId || 'assistant');

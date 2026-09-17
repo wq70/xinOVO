@@ -37,12 +37,14 @@ function loadSettingsToSidebar() {
             if (db.magicRoom && db.magicRoom.presets) {
                 db.magicRoom.presets.forEach(p => {
                     const opt = document.createElement('option');
-                    opt.value = p.name;
+                    opt.value = p.id || p.name;
                     opt.textContent = p.name;
                     customPromptPresetEl.appendChild(opt);
                 });
             }
-            customPromptPresetEl.value = e.customPromptPreset || '';
+            const presetRef = e.customPromptPresetId || e.customPromptPreset || '';
+            const matchedPreset = (db.magicRoom && db.magicRoom.presets || []).find(p => p.id === presetRef || p.name === presetRef);
+            customPromptPresetEl.value = matchedPreset ? (matchedPreset.id || matchedPreset.name) : '';
         }
         
         document.getElementById('setting-char-persona').value = e.persona;
@@ -767,6 +769,27 @@ function loadSettingsToSidebar() {
 
         const familyCardEnabledEl = document.getElementById('setting-family-card-enabled');
         if (familyCardEnabledEl) familyCardEnabledEl.checked = e.familyCardEnabled === true;
+
+        const autonomousShoppingEl = document.getElementById('setting-autonomous-shopping-enabled');
+        if (autonomousShoppingEl) autonomousShoppingEl.checked = e.autonomousShoppingEnabled === true;
+        const ownWalletShoppingEl = document.getElementById('setting-character-own-wallet-shopping-enabled');
+        if (ownWalletShoppingEl) ownWalletShoppingEl.checked = e.characterOwnWalletShoppingEnabled !== false;
+        const familyCardSpendingEl = document.getElementById('setting-character-family-card-spending-enabled');
+        if (familyCardSpendingEl) familyCardSpendingEl.checked = e.characterFamilyCardSpendingEnabled === true;
+        const selfShoppingEl = document.getElementById('setting-character-self-shopping-enabled');
+        if (selfShoppingEl) selfShoppingEl.checked = e.characterSelfShoppingEnabled !== false;
+        const giftShoppingEl = document.getElementById('setting-character-gift-shopping-enabled');
+        if (giftShoppingEl) giftShoppingEl.checked = e.characterGiftShoppingEnabled !== false;
+        const payRequestEl = document.getElementById('setting-character-pay-request-enabled');
+        if (payRequestEl) payRequestEl.checked = e.characterPayRequestEnabled !== false;
+        const shoppingSingleLimitEl = document.getElementById('setting-character-shopping-single-limit');
+        if (shoppingSingleLimitEl) shoppingSingleLimitEl.value = e.characterShoppingSingleLimit ?? 200;
+        const shoppingBudgetEl = document.getElementById('setting-character-shopping-period-budget');
+        if (shoppingBudgetEl) shoppingBudgetEl.value = e.characterShoppingPeriodBudget ?? 1000;
+        const shoppingFrequencyEl = document.getElementById('setting-character-shopping-frequency');
+        if (shoppingFrequencyEl) shoppingFrequencyEl.value = e.characterShoppingFrequency || 'rare';
+        const shoppingCategoriesEl = document.getElementById('setting-character-shopping-categories');
+        if (shoppingCategoriesEl) shoppingCategoriesEl.value = e.characterShoppingAllowedCategories || '';
 
         document.getElementById('setting-video-call-enabled').checked = e.videoCallEnabled || false;
         document.getElementById('setting-real-camera-enabled').checked = e.realCameraEnabled || false;

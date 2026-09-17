@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import {
     bodyHtmlChunks,
     loaderInitScript,
@@ -79,4 +80,29 @@ for (const [output, parts] of generatedBundles) {
     writeIfChanged(output, parts.map(read).join(''));
 }
 
-console.log('Built compact index.html, local HTML loaders, and legacy runtime bundles.');
+function collectRuntimeAssets(directory, relativePrefix = '') {
+    const assets = [];
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'src' || entry.name === 'scripts') continue;
+        const absolute = path.join(directory, entry.name);
+        const relative = path.posix.join(relativePrefix, entry.name);
+        if (entry.isDirectory()) {
+            if (relative === 'js' || relative.startsWith('js/') || relative === 'css' || relative.startsWith('css/')) {
+                assets.push(...collectRuntimeAssets(absolute, relative));
+            }
+            continue;
+        }
+        if (relative === 'sw.js' || relative === 'sw-assets.js') continue;
+        if (relative === 'index.html' || relative === 'manifest.json' || /\.(?:js|css)$/i.test(relative)) assets.push(relative);
+    }
+    return assets.sort();
+}
+
+const serviceWorkerAssets = collectRuntimeAssets(root);
+const serviceWorkerVersion = createHash('sha256')
+    .update(serviceWorkerAssets.map(asset => `${asset}\0${fs.readFileSync(path.join(root, asset))}`).join('\0'))
+    .digest('hex')
+    .slice(0, 16);
+writeIfChanged('sw-assets.js', `self.__OVO_SW_MANIFEST=${JSON.stringify({ version: serviceWorkerVersion, assets: serviceWorkerAssets })};\n`);
+
+console.log('Built compact index.html, local HTML loaders, legacy runtime bundles, and the service-worker asset manifest.');

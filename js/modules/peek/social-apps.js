@@ -415,8 +415,9 @@ async function requestPeekNPCReply() {
     if (db.peekApiSettings && db.peekApiSettings.url && db.peekApiSettings.key && db.peekApiSettings.model) {
         apiConfig = db.peekApiSettings;
     }
+    apiConfig = typeof getApiConfigForFeature === 'function' ? getApiConfigForFeature('peek', apiConfig) : apiConfig;
     const { url, key, model } = apiConfig;
-    if (!url || !key || !model) {
+    if (typeof isApiConfigReady === 'function' ? !isApiConfigReady(apiConfig) : (!url || !key || !model)) {
         showToast('请先在设置中配置 API');
         return;
     }
@@ -553,7 +554,8 @@ async function peekSupplementPersonaFromConversation() {
     if (!char) return;
     let apiConfig = db.apiSettings;
     if (db.peekApiSettings && db.peekApiSettings.url && db.peekApiSettings.key && db.peekApiSettings.model) apiConfig = db.peekApiSettings;
-    if (!apiConfig || !apiConfig.url || !apiConfig.key || !apiConfig.model) {
+    apiConfig = typeof getApiConfigForFeature === 'function' ? getApiConfigForFeature('peek', apiConfig) : apiConfig;
+    if (typeof isApiConfigReady === 'function' ? !isApiConfigReady(apiConfig) : (!apiConfig || !apiConfig.url || !apiConfig.key || !apiConfig.model)) {
         showToast('请先配置 API');
         return;
     }
@@ -610,4 +612,3 @@ function savePeekEditPersona() {
     renderPeekConversation(currentPeekConversation);
     showToast('已保存');
 }
-

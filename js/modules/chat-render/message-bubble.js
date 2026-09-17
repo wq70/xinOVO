@@ -12,6 +12,23 @@ function createMessageBubbleElement(message, isContinuous = false) {
         isThinking = true;
     }
 
+    if (isThinking && (message.thinkingDisplay === 'summary' || message.thinkingDisplay === 'detail')) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'message-wrapper received cot-thinking-visible';
+        wrapper.dataset.id = id || '';
+        const details = document.createElement('details');
+        details.className = 'cot-thinking-details';
+        const summary = document.createElement('summary');
+        summary.textContent = message.thinkingDisplay === 'summary' ? '思考摘要' : '思考详情';
+        const body = document.createElement('div');
+        body.className = 'cot-thinking-body';
+        const plain = String(content || '').replace(/^\s*<thinking>|<\/thinking>\s*$/g, '').trim();
+        body.textContent = message.thinkingDisplay === 'summary' && plain.length > 180 ? `${plain.slice(0, 180)}…` : plain;
+        details.append(summary, body);
+        wrapper.appendChild(details);
+        return wrapper;
+    }
+
     // 拦截：如果是状态更新、思考过程或转账指令消息，且没开调试模式，直接不渲染
     if ((isStatusUpdate || isThinking || message.isTransferAction) && !isDebugMode) return null;
     // 拦截：hiddenFromDisplay 标记的消息（如角色自知上下文消息），不渲染成气泡
@@ -584,15 +601,18 @@ const contentMatch = content.match(/^\[.*?(?:消息|回复)[：:]([\s\S]+)\]$/);
         // [A为B下单了：配送方式|总价|商品名 x数量]
         const deliveryType = shopOrderMatchNew[3];
         const totalPrice = shopOrderMatchNew[4];
-        const itemsStr = shopOrderMatchNew[5];
+        const itemsStr = shopOrderMatchNew[5].replace(/[；;]\s*支付方式[：:]\s*(?:用户)?亲属卡\s*$/i, '').trim();
+        const paymentLabel = message.shopPaymentStatus === 'failed'
+            ? `订单未完成：${message.shopPaymentError || '支付失败'}`
+            : (message.shopPaymentSource === 'user_family_card' ? '亲属卡已支付' : '已支付');
         
         // 解析商品列表字符串 "汉堡 x2, 可乐 x1" -> [{name, qty}]
         const items = itemsStr.split(/,\s*/).map(s => {
             const parts = s.match(/(.+?)\s*x(\d+)$/);
             if (parts) {
-                return { name: parts[1], qty: parts[2] };
+                return { name: DOMPurify.sanitize(parts[1]), qty: parts[2] };
             }
-            return { name: s, qty: 1 };
+            return { name: DOMPurify.sanitize(s), qty: 1 };
         });
 
         const now = new Date(timestamp);
@@ -660,7 +680,7 @@ const contentMatch = content.match(/^\[.*?(?:消息|回复)[：:]([\s\S]+)\]$/);
             <div class="receipt-footer">
                 ${pickupCodeHtml}
                 <div class="receipt-delivery-info">
-                    <span>${isPickup ? '门店自提' : deliveryType}</span>
+                    <span>${DOMPurify.sanitize(`${isPickup ? '门店自提' : deliveryType} · ${paymentLabel}`)}</span>
                     <span>${dateStr}</span>
                 </div>
             </div>
@@ -1014,7 +1034,7 @@ const contentMatch = content.match(/^\[.*?(?:消息|回复)[：:]([\s\S]+)\]$/);
     } else if (familyCardGiftMatch || familyCardData || receivedFamilyCardData) {
         const card = familyCardData || receivedFamilyCardData;
         const status = message.familyCardStatus || message.receivedFamilyCardStatus || 'pending';
-        const statusText = status === 'accepted' ? '已接收' : status === 'returned' ? '已退还' : status === 'revoked' ? '已收回' : '待接收';
+        const statusText = status === 'accepted' ? '已接收' : status === 'returned' ? '已退还' : status === 'revoked' ? '已收回' : status === 'frozen' ? '已冻结' : status === 'replaced' ? '已替换' : '待接收';
         const cardNum = card ? card.cardNumber : '****';
         const limitNum = card ? card.limit : (familyCardGiftMatch ? familyCardGiftMatch[3] : '');
         const periodText = card ? (card.refreshPeriod === 'daily' ? '每天' : card.refreshPeriod === 'weekly' ? '每周' : card.refreshPeriod === 'monthly' ? '每月' : (card.refreshDays || 30) + '天') : (familyCardGiftMatch ? familyCardGiftMatch[4] : '');

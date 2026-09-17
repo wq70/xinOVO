@@ -41,8 +41,10 @@
     left: 0;
     width: 100%;
     padding: 15px 20px;
+    padding-right: max(20px, var(--ovo-safe-area-right));
+    padding-left: max(20px, var(--ovo-safe-area-left));
     padding-top: calc(15px + constant(safe-area-inset-top));
-    padding-top: calc(15px + env(safe-area-inset-top));
+    padding-top: calc(15px + var(--ovo-safe-area-top));
     z-index: 10;
     display: flex;
     justify-content: space-between;

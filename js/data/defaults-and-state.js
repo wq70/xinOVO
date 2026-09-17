@@ -162,9 +162,9 @@ const DEFAULT_COT_PRESETS = [
 ];
 
 const globalSettingKeys = [
-    'apiSettings', 'summaryApiSettings', 'backgroundApiSettings', 'supplementPersonaApiSettings', 'peekApiSettings', 'vectorApiSettings', 'imageRecognitionEnabled', 'imageRecognitionApiSettings', 'stickerRecognitionApiSettings', 'wallpaper', 'globalChatWallpaper', 'globalCallWallpaper', 'homeScreenMode', 'fontUrl', 'localFontName', 'customIcons', 'customAppNames', 'namePresets',
+    'apiSettings', 'summaryApiSettings', 'backgroundApiSettings', 'supplementPersonaApiSettings', 'peekApiSettings', 'vectorApiSettings', 'apiNodes', 'apiNodeRoutes', 'imageRecognitionEnabled', 'imageRecognitionApiSettings', 'stickerRecognitionApiSettings', 'wallpaper', 'globalChatWallpaper', 'globalCallWallpaper', 'homeScreenMode', 'fontUrl', 'localFontName', 'customIcons', 'customAppNames', 'namePresets',
     'apiPresets', 'summaryApiPresets', 'backgroundApiPresets', 'supplementPersonaApiPresets', 'peekApiPresets', 'vectorApiPresets', 'imageRecognitionApiPresets', 'stickerRecognitionApiPresets', 'bubbleCssPresets', 'myPersonaPresets', 'globalCss',
-    'globalCssPresets', 'fontPresets', 'homeSignature', 'forumPosts', 'forumBindings', 'forumUserProfile', 'forumSettings', 'forumApiSettings', 'forumMessages', 'forumStrangerProfiles', 'forumFriendRequests', 'forumPendingRequestFromUser', 'forumAltAccounts', 'forumActiveAccountId', 'pomodoroTasks', 'pomodoroSettings', 'insWidgetSettings', 'homeWidgetSettings',
+    'globalCssPresets', 'fontPresets', 'homeSignature', 'forumPosts', 'forumBindings', 'forumUserProfile', 'forumSettings', 'forumApiSettings', 'forumMessages', 'forumStrangerProfiles', 'forumFriendRequests', 'forumPendingRequestFromUser', 'forumAltAccounts', 'forumActiveAccountId', 'forumAccountStates', 'forumRelationships', 'forumKnowledge', 'forumSocialEdges', 'forumStoryThreads', 'forumEvents', 'forumNotifications', 'forumDrafts', 'forumSchemaVersion', 'pomodoroTasks', 'pomodoroSettings', 'insWidgetSettings', 'homeWidgetSettings',
     'chatFolders', 'fontSizeScale', 'activePersonaId', 'moreProfileCardBg', 'statusBarPresets', 'regexFilterPresets', 'themeSettings', 'themePresets', 'savedKeyboardHeight',
     'globalSendSound', 'globalReceiveSound', 'globalMessageSentSound', 'globalIncomingCallSound', 'multiMsgSoundEnabled', 'soundPresets', 'galleryPresets', 'iconPresets', 'homeWidgetPresets', 'widgetWallpaperPresets', 'voicePresets', 'fontBuffer',
     'cotSettings', 'cotPresets', 'hasSeenVideoCallDisclaimer', 'hasSeenVideoCallAvatarHint',
@@ -178,7 +178,7 @@ const globalSettingKeys = [
     'avatarRecognitionDetailLevel', 'autoCompressImage', 'imageGenTimeout',
     'phoneControlRecycleBin', 'nodeTemplates', 'nodeSummaryText', 'memoryTableTemplates', 'vectorMemoryTemplates',
     'nightModeSettings', 'homeStatusBarSettings', 'stickerCategories', 'magicRoom',
-    'keepAliveCodeEnabled', 'keepAliveAudioEnabled', 'keepAliveAudioSrc', 'keepAliveAudioName', 'keepAliveAudioLibrary',
+    'keepAliveCodeEnabled', 'keepAliveAutoWakeEnabled', 'keepAliveAudioEnabled', 'keepAliveAudioSrc', 'keepAliveAudioName', 'keepAliveAudioLibrary',
     'ttsPresets', 'weatherApiSettings'
 ];
 if (typeof window !== 'undefined') window.globalSettingKeysForBackup = globalSettingKeys;
@@ -700,6 +700,8 @@ var db = {
     supplementPersonaApiSettings: {},
     peekApiSettings: {},
     vectorApiSettings: {},
+    apiNodes: [],
+    apiNodeRoutes: {},
     wallpaper: 'https://i.postimg.cc/W4Z9R9x4/ins-1.jpg',
     globalChatWallpaper: '',
     globalCallWallpaper: '',
@@ -720,6 +722,15 @@ var db = {
     myPersonaPresets: [],
     fontPresets: [],
     forumPosts: [],
+    forumAccountStates: {},
+    forumRelationships: {},
+    forumKnowledge: [],
+    forumSocialEdges: [],
+    forumStoryThreads: [],
+    forumEvents: [],
+    forumNotifications: [],
+    forumDrafts: [],
+    forumSchemaVersion: 2,
     globalCss: '',
     globalCssPresets: [],
     homeSignature: '编辑个性签名...',

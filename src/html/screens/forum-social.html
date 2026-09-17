@@ -84,6 +84,9 @@
                         </svg>
                     </button>
                     <input type="text" id="forum-search-input" autocomplete="off" placeholder="搜索关键词">
+                    <button class="action-btn" id="forum-local-search-btn" title="搜索已有帖子" aria-label="搜索已有帖子">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="21" height="21"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
+                    </button>
                     <button class="action-btn" id="forum-refresh-btn" title="刷新">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22"
                             height="22">
@@ -93,6 +96,7 @@
                         </svg>
                     </button>
                 </div>
+                <button type="button" id="forum-current-identity-chip" class="forum-identity-chip" title="当前发言身份"></button>
 
                 <div class="forum-post-delete-toolbar" id="forum-post-delete-toolbar" style="display:none;">
                     <button class="btn btn-small" id="forum-post-select-all-btn">全选</button>
@@ -102,6 +106,11 @@
 
                 <div class="forum-filter-tabs">
                     <button class="forum-filter-tab active" data-filter="all">全部</button>
+                    <button class="forum-filter-tab" data-filter="latest">最新</button>
+                    <button class="forum-filter-tab" data-filter="hot">热门</button>
+                    <button class="forum-filter-tab" data-filter="following">关注</button>
+                    <button class="forum-filter-tab" data-filter="mentions">与我相关</button>
+                    <button class="forum-filter-tab" data-filter="history">历史</button>
                     <button class="forum-filter-tab" data-filter="liked">我点赞的</button>
                     <button class="forum-filter-tab" data-filter="favorited">我收藏的</button>
                 </div>
@@ -282,6 +291,18 @@
                         </div>
                     </div>
                     <div class="kkt-group forum-setting-group">
+                        <div class="kkt-group-title">社区与陪伴</div>
+                        <div class="kkt-item"><div class="kkt-item-label">主动互动强度</div><div class="kkt-item-control forum-range-control"><input type="range" id="forum-proactive-intensity" min="0" max="100" value="50"><span id="forum-proactive-intensity-value">50</span></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">恋爱剧情倾向</div><div class="kkt-item-control forum-range-control"><input type="range" id="forum-romance-intensity" min="0" max="100" value="50"><span id="forum-romance-intensity-value">50</span></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">冲突剧情强度</div><div class="kkt-item-control forum-range-control"><input type="range" id="forum-conflict-intensity" min="0" max="100" value="35"><span id="forum-conflict-intensity-value">35</span></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">社区持续记忆</div><div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="forum-continuity-toggle" checked><span class="kkt-slider"></span></label></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">角色认知边界</div><div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="forum-knowledge-toggle" checked><span class="kkt-slider"></span></label></div></div>
+                        <div class="kkt-item"><div class="kkt-item-label">进入论坛自动更新</div><div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="forum-auto-advance-toggle"><span class="kkt-slider"></span></label></div></div>
+                        <p class="forum-setting-hint">开启后，仅在超过合理间隔且不处于安静时段时调用当前论坛 API 追加动态；默认关闭，避免意外消耗。</p>
+                        <div class="kkt-item"><div class="kkt-item-label">安静时段</div><div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="forum-quiet-hours-toggle"><span class="kkt-slider"></span></label></div></div>
+                        <div class="forum-quiet-hours-row" id="forum-quiet-hours-row"><input type="time" id="forum-quiet-hours-start" value="23:00"><span>至</span><input type="time" id="forum-quiet-hours-end" value="08:00"></div>
+                    </div>
+                    <div class="kkt-group forum-setting-group">
                         <div class="kkt-group-title"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom; color:var(--primary-color);"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>AI生成设置</div>
                         <div class="kkt-item">
                             <div class="kkt-item-label">个人资料</div>
@@ -403,6 +424,7 @@
                 <button class="back-btn" data-target="forum-dm-list-screen">&#8249;</button>
                 <div class="title-container">
                     <h1 class="title" id="forum-dm-conversation-title">私信对话</h1>
+                    <small id="forum-dm-presence" class="forum-dm-presence" aria-live="polite"></small>
                 </div>
                 <div class="forum-dm-conversation-header-actions" style="display:flex;align-items:center;gap:6px;">
                     <button type="button" class="btn btn-primary btn-small" id="forum-dm-add-friend-btn" title="添加好友" style="display:none; padding:6px 12px; font-size:13px;">添加好友</button>

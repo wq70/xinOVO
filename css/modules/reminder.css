@@ -17,7 +17,9 @@
     -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid #eee;
     padding: 10px 16px;
-    padding-top: max(10px, env(safe-area-inset-top));
+    padding-right: max(16px, var(--ovo-safe-area-right));
+    padding-left: max(16px, var(--ovo-safe-area-left));
+    padding-top: max(10px, var(--ovo-safe-area-top));
     flex-shrink: 0;
 }
 

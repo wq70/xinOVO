@@ -37,7 +37,17 @@ function saveCurrentApiAsPreset() {
         apiKey: apiKeyEl ? apiKeyEl.value : '',
         apiUrl: apiUrlEl ? apiUrlEl.value : '',
         provider: providerEl ? providerEl.value : '',
-        model: modelEl ? modelEl.value : ''
+        model: modelEl ? modelEl.value : '',
+        generationParams: typeof window.getMainApiGenerationParams === 'function'
+            ? window.getMainApiGenerationParams()
+            : (typeof db !== 'undefined' ? normalizeApiGenerationParams(db.apiSettings?.generationParams, false, db.apiSettings?.temperature) : null),
+        behavior: {
+            onlineRoleEnabled: document.getElementById('online-role-switch')?.checked !== false,
+            timePerceptionEnabled: !!document.getElementById('time-perception-switch')?.checked,
+            streamEnabled: !!document.getElementById('stream-switch')?.checked,
+            quickReplyEnabled: !!document.getElementById('quick-reply-switch')?.checked,
+            latestTurnProtectionEnabled: !!document.getElementById('latest-turn-protection-switch')?.checked
+        }
     };
     
     let name = prompt('为该 API 预设填写名称（会覆盖同名预设）：');
@@ -64,9 +74,23 @@ async function applyApiPreset(name) {
         if (apiKeyEl && p.data && typeof p.data.apiKey !== 'undefined') apiKeyEl.value = p.data.apiKey;
         if (apiUrlEl && p.data && typeof p.data.apiUrl !== 'undefined') apiUrlEl.value = p.data.apiUrl;
         if (providerEl && p.data && typeof p.data.provider !== 'undefined') providerEl.value = p.data.provider;
+        if (providerEl && typeof window.updateMainApiGenerationProtocol === 'function') window.updateMainApiGenerationProtocol(providerEl.value);
         if (modelEl && p.data && typeof p.data.model !== 'undefined') {
             modelEl.innerHTML = `<option value="${p.data.model}">${p.data.model}</option>`;
             modelEl.value = p.data.model;
+        }
+        if (p.data?.generationParams && typeof window.setMainApiGenerationParams === 'function') {
+            window.setMainApiGenerationParams(p.data.generationParams, p.data.temperature);
+        }
+        if (p.data?.behavior) {
+            const behaviorFields = {
+                onlineRoleEnabled: 'online-role-switch', timePerceptionEnabled: 'time-perception-switch', streamEnabled: 'stream-switch',
+                quickReplyEnabled: 'quick-reply-switch', latestTurnProtectionEnabled: 'latest-turn-protection-switch'
+            };
+            Object.entries(behaviorFields).forEach(([key, id]) => {
+                const input = document.getElementById(id);
+                if (input && typeof p.data.behavior[key] === 'boolean') input.checked = p.data.behavior[key];
+            });
         }
 
         showToast('已应用 API 预设');

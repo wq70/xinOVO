@@ -12,13 +12,15 @@ function setupMagicRoomApp() {
     const importBtn = document.getElementById('magic-room-import-btn');
     const exportBtn = document.getElementById('magic-room-export-btn');
     const importInput = document.getElementById('magic-room-import-input');
+    const promptStudioUi = typeof setupPromptStudioEditor === 'function' ? setupPromptStudioEditor() : null;
+    const promptPresetIdsMigrated = window.PromptStudio ? window.PromptStudio.ensurePresetIds(db.magicRoom) : false;
+    if (promptPresetIdsMigrated) saveMagicRoomSettings();
 
     // 默认底层提示词模板
     const defaultTemplate = `你正在一个名为“404”的线上聊天软件中扮演一个角色。请严格遵守以下规则：
 核心规则：
 A. 当前时间：现在是 {{当前时间}}。你应知晓当前时间，但除非对话内容明确相关，否则不要主动提及或评论时间（例如，不要催促我睡觉）。
-[System Notice] 你的出生日期是[出生日期]，你现在的年龄是[年龄]岁。
-[System Notice] 你当前所在的当地时间是：[时间] ([时区])。
+{{角色时间年龄通知}}
 B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角色和我之间没有任何线下关系。严禁提出任何关于线下见面、现实世界互动或转为其他非本平台联系方式的建议。你必须始终保持在线角色的身份。
 
 角色和对话规则：
@@ -33,8 +35,7 @@ B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角�
 
 <user_settings>
 3. 关于我的人设：{{用户人设}}
-[System Notice] 与你对话的用户（称呼：{{用户称呼}}）现在的年龄是[年龄]岁。
-[System Notice] 与你对话的用户（称呼：{{用户称呼}}）当前所在的当地时间是：[时间] ([时区])。
+{{用户时间年龄通知}}
 </user_settings>
 
 <memoir>
@@ -91,7 +92,7 @@ B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角�
         if (db.magicRoom && db.magicRoom.presets) {
             db.magicRoom.presets.forEach(p => {
                 const opt = document.createElement('option');
-                opt.value = p.name;
+                opt.value = p.id || p.name;
                 opt.textContent = p.name;
                 presetSelect.appendChild(opt);
             });
@@ -105,9 +106,10 @@ B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角�
         applyPresetBtn.addEventListener('click', () => {
             const selected = presetSelect.value;
             if (!selected) return showToast('请先选择预设');
-            const preset = (db.magicRoom.presets || []).find(p => p.name === selected);
+            const preset = (db.magicRoom.presets || []).find(p => p.id === selected || p.name === selected);
             if (preset) {
-                promptTextarea.value = preset.template;
+                promptTextarea.value = preset.template || '';
+                if (promptStudioUi) promptStudioUi.loadPreset(preset);
                 showToast('已加载预设：' + selected);
             }
         });
@@ -116,15 +118,24 @@ B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角�
     if (savePresetBtn) {
         savePresetBtn.addEventListener('click', async () => {
             const template = promptTextarea.value.trim();
-            if (!template) return showToast('模板为空，无法保存');
-            const name = prompt('请输入预设名称（将覆盖同名预设）：');
+            const draft = promptStudioUi ? promptStudioUi.getDraft() : null;
+            if (!template && !(draft && draft.mode === 'items' && draft.items.length)) return showToast('提示词为空，无法保存');
+            const name = typeof customPrompt === 'function'
+                ? await customPrompt('请输入预设名称（将覆盖同名预设）：', '', '保存提示词预设')
+                : prompt('请输入预设名称（将覆盖同名预设）：');
             if (!name || !name.trim()) return;
             
             if (!db.magicRoom) db.magicRoom = {};
             if (!db.magicRoom.presets) db.magicRoom.presets = [];
             
             const idx = db.magicRoom.presets.findIndex(p => p.name === name.trim());
-            const presetObj = { name: name.trim(), template: template };
+            const presetObj = {
+                id: idx >= 0 ? db.magicRoom.presets[idx].id : (window.PromptStudio ? window.PromptStudio.uid('prompt-preset') : `prompt-preset-${Date.now()}`),
+                name: name.trim(),
+                template: template,
+                mode: draft ? draft.mode : 'source',
+                items: draft ? draft.items : undefined
+            };
             if (idx >= 0) {
                 db.magicRoom.presets[idx] = presetObj;
             } else {
@@ -160,10 +171,21 @@ B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角�
                     renameBtn.className = 'btn btn-small';
                     renameBtn.textContent = '重命名';
                     renameBtn.onclick = async () => {
-                        const newName = prompt('输入新名称：', p.name);
+                        const newName = typeof customPrompt === 'function'
+                            ? await customPrompt('输入新名称：', p.name, '重命名提示词预设')
+                            : prompt('输入新名称：', p.name);
                         if (!newName || !newName.trim() || newName.trim() === p.name) return;
+                        const oldName = p.name;
                         db.magicRoom.presets[idx].name = newName.trim();
+                        (db.characters || []).forEach(character => {
+                            const reference = character.customPromptPresetId || character.customPromptPreset;
+                            if (reference === oldName || reference === p.id) {
+                                character.customPromptPresetId = p.id;
+                                character.customPromptPreset = p.id;
+                            }
+                        });
                         await saveMagicRoomSettings();
+                        if (typeof saveData === 'function') await saveData();
                         populateMagicRoomPresets();
                         managePresetsBtn.click(); // re-render
                     };
@@ -203,15 +225,19 @@ B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角�
             const text = await file.text();
             const data = JSON.parse(text);
             // 兼容单个模板导入
-            if (data && data.type === 'ovo-system-prompt-template' && data.template) {
-                promptTextarea.value = data.template;
+            if (data && data.type === 'ovo-system-prompt-template' && (data.template || Array.isArray(data.items))) {
+                promptTextarea.value = data.template || '';
+                if (promptStudioUi && (data.mode || data.items)) {
+                    promptStudioUi.loadPreset({ name: data.name || '导入模板', template: data.template, mode: data.mode, items: data.items });
+                }
                 showToast('模板导入成功');
             } 
             // 支持多个预设数组导入
-            else if (Array.isArray(data) && data.length > 0 && data[0].template) {
+            else if (Array.isArray(data) && data.length > 0 && (data[0].template || Array.isArray(data[0].items))) {
                 if (!db.magicRoom) db.magicRoom = {};
                 if (!db.magicRoom.presets) db.magicRoom.presets = [];
                 data.forEach(p => {
+                    if (!p.id && window.PromptStudio) p.id = window.PromptStudio.uid('prompt-preset');
                     const idx = db.magicRoom.presets.findIndex(exist => exist.name === p.name);
                     if (idx >= 0) db.magicRoom.presets[idx] = p;
                     else db.magicRoom.presets.push(p);
@@ -247,11 +273,14 @@ B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角�
         }
         
         const template = promptTextarea.value;
-        if (!template) return showToast('模板为空，无法导出');
+        const draft = promptStudioUi ? promptStudioUi.getDraft() : null;
+        if (!template && !(draft && draft.mode === 'items' && draft.items.length)) return showToast('提示词为空，无法导出');
         const data = {
             type: 'ovo-system-prompt-template',
-            version: 1,
-            template: template
+            version: 2,
+            template: template,
+            mode: draft ? draft.mode : 'source',
+            items: draft ? draft.items : undefined
         };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -269,6 +298,7 @@ B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角�
         if (!db.magicRoom) db.magicRoom = {};
         db.magicRoom.customPromptEnabled = enabledSwitch.checked;
         db.magicRoom.customPromptTemplate = promptTextarea.value;
+        if (promptStudioUi) promptStudioUi.saveToDb();
         // 保存系统通知设置
         db.magicRoom.sysNotifEnabled      = sysnotifEnabled ? sysnotifEnabled.checked : false;
         db.magicRoom.sysNotifSenderName   = sysnotifSenderName ? sysnotifSenderName.value.trim() : '';

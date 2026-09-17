@@ -137,20 +137,39 @@ b) [${character.realName}拒绝了${character.myName}的代付请求]\n`;
 
     if (character.shopInteractionEnabled) {
         rules += `${nextIndex}. ✨重要✨ **商城互动**：你可以使用商城功能来增加互动乐趣。
-   a) **主动给我买东西**：当你想给我买东西时可以下单。格式：[${character.realName}为${character.myName}下单了：配送方式|金额|商品清单]。
+   a) **主动给我买东西**：${character.characterGiftShoppingEnabled === false ? '当前未获准给我下单，不得使用该格式。' : `当你想给我买东西时可以下单。格式：[${character.realName}为${character.myName}下单了：配送方式|金额|商品清单]。`}
       - 配送方式可选：“即时配送”、“自提口令”。
         - “自提口令”：你可以设置一个“自提口令”（用户可见）随订单一同发送，我输入指定的口令才能拿到商品。格式：[${character.realName}为${character.myName}下单了：自提口令: 你的口令|金额|商品清单]。口令不局限于数字，可以是短语/短句，但不超过8个字。
-   b) **求代付**：当你没钱了，或者想撒娇让我买单时，可以发起代付请求。格式：[${character.realName}向${character.myName}发起了代付请求:金额|商品清单]。
+   b) **求代付**：${character.characterPayRequestEnabled === false ? '当前未获准发起代付请求，不得使用代付格式。' : `当你没钱了，或者想撒娇让我买单时，可以发起代付请求。格式：[${character.realName}向${character.myName}发起了代付请求:金额|商品清单]。`}
    c) **直接送礼物**：[${character.realName}送来的礼物：xxx]。礼物不是只有特殊意义的时候才适合发送，适合场景：日常生活中的小惊喜、具有特殊意义的礼品、${character.realName}想给${character.myName}送礼物时。
    d) **转账**：[${character.realName}的转账：xxx元；备注：xxx]。\n`;
+        if (character.autonomousShoppingEnabled) {
+            const frequencyText = character.characterShoppingFrequency === 'active' ? '可以相对活跃，但仍须自然且避免连续重复' : character.characterShoppingFrequency === 'normal' ? '频率适中，不要连续购物' : '只在确实符合情境时偶尔发生';
+            const categoriesText = (character.characterShoppingAllowedCategories || '').trim() || '不限制具体类型，但必须符合人设和情境';
+            rules += `   e) **给自己购物**：你可以在正常聊天或原本触发的后台消息中为自己下单，格式：[${character.realName}为自己下单了：配送方式|金额|商品清单]。购物${frequencyText}；单笔不超过 ${Number(character.characterShoppingSingleLimit) || 0} 元，周期预算不超过 ${Number(character.characterShoppingPeriodBudget) || 0} 元；允许类型：${categoriesText}。\n`;
+            if (character.characterFamilyCardSpendingEnabled) {
+                rules += `      如果你明确决定使用${character.myName}赠给你的亲属卡，在商品清单末尾追加“；支付方式：用户亲属卡”，例如：[${character.realName}为自己下单了：即时配送|88|生活用品；支付方式：用户亲属卡]。只有实际持有正常状态且额度充足的卡才能使用。\n`;
+            } else {
+                rules += `      你没有使用${character.myName}亲属卡消费的权限，不得声称使用该卡下单。\n`;
+            }
+            rules += `      购物不会额外触发一次后台回复，只能作为当前正常回复或原本已触发的后台消息中的自然行为。\n`;
+        }
         if (character.familyCardEnabled) {
-            rules += `   e) **赠送亲属卡**：格式：[${character.realName}赠送亲属卡：额度{金额}元；刷新周期：{每天|每周|每月}]。冻结/解冻/收回：[${character.realName}冻结了亲属卡]、[${character.realName}解冻了亲属卡]、[${character.realName}收回了亲属卡]。调整额度：[${character.realName}调整亲属卡额度为：{金额}元]。\n`;
+            rules += `   f) **赠送亲属卡**：格式：[${character.realName}赠送亲属卡：额度{金额}元；刷新周期：{每天|每周|每月}]。冻结/解冻/收回：[${character.realName}冻结了亲属卡]、[${character.realName}解冻了亲属卡]、[${character.realName}收回了亲属卡]。调整额度：[${character.realName}调整亲属卡额度为：{金额}元]。\n`;
         }
     } else {
         rules += `${nextIndex}. ✨重要✨ 你可以主动给我转账或送礼物。转账格式必须为：[${character.realName}的转账：xxx元；备注：xxx]。送礼物格式必须为：[${character.realName}送来的礼物：xxx]。礼物不是只有特殊意义的时候才适合发送，当你只是想给我买什么或是想给日常生活中的小惊喜时都可以送礼物。\n`;
         if (character.familyCardEnabled) {
             rules += `你还可以赠送亲属卡（格式：[${character.realName}赠送亲属卡：额度xxx元；刷新周期：每月]），以及冻结/解冻/收回、调整额度。\n`;
         }
+    }
+    if (character.autonomousShoppingEnabled && !character.shopInteractionEnabled) {
+        const frequencyText = character.characterShoppingFrequency === 'active' ? '可以相对活跃，但仍须自然且避免连续重复' : character.characterShoppingFrequency === 'normal' ? '频率适中，不要连续购物' : '只在确实符合情境时偶尔发生';
+        const categoriesText = (character.characterShoppingAllowedCategories || '').trim() || '不限制具体类型，但必须符合人设和情境';
+        rules += `你可以在正常聊天或原本触发的后台消息中为自己下单：[${character.realName}为自己下单了：配送方式|金额|商品清单]。购物${frequencyText}；单笔不超过 ${Number(character.characterShoppingSingleLimit) || 0} 元，周期预算不超过 ${Number(character.characterShoppingPeriodBudget) || 0} 元；允许类型：${categoriesText}。\n`;
+        if (character.characterFamilyCardSpendingEnabled) rules += `使用${character.myName}的亲属卡时，必须在商品清单末尾加“；支付方式：用户亲属卡”。\n`;
+        if (character.characterOwnWalletShoppingEnabled === false && !character.characterFamilyCardSpendingEnabled) rules += '当前没有可用的购物支付方式，不得下单。\n';
+        rules += '购物不会额外触发一次后台回复。\n';
     }
     nextIndex++;
 
@@ -272,7 +291,14 @@ r) 发起语音通话: [${character.realName}向${character.myName}发起了语�
     if (character.shopInteractionEnabled) {
         outputFormats += `
 o) 主动下单: [${character.realName}为${character.myName}下单了：配送方式|金额|商品清单]
-p) 求代付: [${character.realName}向${character.myName}发起了代付请求:金额|商品清单]`;
+p) 求代付: ${character.characterPayRequestEnabled === false ? '当前禁用' : `[${character.realName}向${character.myName}发起了代付请求:金额|商品清单]`}`;
+        if (character.autonomousShoppingEnabled) {
+            outputFormats += `
+pa) 给自己下单: [${character.realName}为自己下单了：配送方式|金额|商品清单]${character.characterFamilyCardSpendingEnabled ? `；如用我的亲属卡，在商品清单末尾加“；支付方式：用户亲属卡”` : ''}`;
+        }
+    }
+    if (character.autonomousShoppingEnabled && !character.shopInteractionEnabled) {
+        outputFormats += `\npa) 给自己下单: [${character.realName}为自己下单了：配送方式|金额|商品清单]${character.characterFamilyCardSpendingEnabled ? `；如用我的亲属卡，在商品清单末尾加“；支付方式：用户亲属卡”` : ''}`;
     }
     if (character.familyCardEnabled) {
         outputFormats += `

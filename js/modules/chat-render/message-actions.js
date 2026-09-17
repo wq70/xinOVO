@@ -21,6 +21,22 @@ window.sendPayResponse = async function(msgId, action) {
                 source: '商城代付',
                 charName: chat.realName || ''
             });
+            if (window.WalletSystem && typeof window.WalletSystem.ensureCharacterWalletLedger === 'function') {
+                const ledger = window.WalletSystem.ensureCharacterWalletLedger(chat);
+                const eventId = `pay_request_${msg.id}`;
+                if (!ledger.transactions.some(item => item.eventId === eventId)) {
+                    ledger.transactions.unshift({
+                        id: `cwt_${eventId}`,
+                        eventId,
+                        type: 'income',
+                        amount,
+                        source: 'pay_request',
+                        remark: '用户已代付商城订单',
+                        time: Date.now()
+                    });
+                    if (typeof ledger.balance === 'number') ledger.balance = Math.round((ledger.balance + amount) * 100) / 100;
+                }
+            }
         }
     }
 
@@ -57,7 +73,8 @@ window.sendPayResponse = async function(msgId, action) {
     chat.history.push(newMsg);
     
     // 5. 保存并刷新到底部
-    if (typeof saveCharacter === 'function') await saveCharacter(currentChatId);
+    if (window.WalletSystem && typeof window.WalletSystem.persist === 'function') await window.WalletSystem.persist([currentChatId]);
+    else if (typeof saveCharacter === 'function') await saveCharacter(currentChatId);
     else if (typeof saveData === 'function') await saveData();
     renderMessages(false, true); 
 };
@@ -65,9 +82,16 @@ window.sendPayResponse = async function(msgId, action) {
 
 function addMessageBubble(message, targetChatId, targetChatType) {
     const isChatRoomActive = document.getElementById('chat-room-screen') && document.getElementById('chat-room-screen').classList.contains('active');
+    const isDocumentVisible = document.visibilityState === 'visible' && (typeof document.hasFocus !== 'function' || document.hasFocus());
+    const isViewingTargetChat = !!isChatRoomActive && isDocumentVisible && targetChatId === currentChatId && targetChatType === currentChatType;
     const senderChat = (targetChatType === 'private')
         ? db.characters.find(c => c.id === targetChatId)
         : db.groups.find(g => g.id === targetChatId);
+
+    // 特殊业务动作必须先于界面可见性分支处理，避免后台消息只出现文本、没有同步状态。
+    if (targetChatType === 'private' && senderChat && window.WalletSystem && typeof window.WalletSystem.processFamilyCardActionMessage === 'function') {
+        window.WalletSystem.processFamilyCardActionMessage(message, senderChat);
+    }
     
     // 如果发送方不是自己，则准备组装系统通知
     let shouldShowSystemNotification = false;
@@ -111,7 +135,7 @@ function addMessageBubble(message, targetChatId, targetChatType) {
         notifIcon  = mr.sysNotifShowAvatar !== false ? senderAvatar : undefined;
         
         // 当不在当前聊天，或者（在当前聊天且开启了页内通知）时，触发系统通知
-        if (!isChatRoomActive || targetChatId !== currentChatId || targetChatType !== currentChatType || mr.sysNotifInChatEnabled) {
+        if (!isViewingTargetChat || mr.sysNotifInChatEnabled) {
             shouldShowSystemNotification = true;
         }
     }
@@ -131,15 +155,15 @@ function addMessageBubble(message, targetChatId, targetChatType) {
         }
     }
     
-    if (targetChatId !== currentChatId || targetChatType !== currentChatType || !isChatRoomActive) {
+    if (!isViewingTargetChat) {
         if (senderChat && message.role !== 'user' && message.senderId !== 'user_me') {
             let invisibleRegex;
             if (senderChat.showStatusUpdateMsg) {
                 // 在末尾添加 |<thinking>[\s\S]*?<\/thinking>
-                invisibleRegex = /\[system:.*?\]|\[.*?已接收礼物\]|\[.*?(?:接收|退回).*?的转账\]|\[.*?同意了.*?的代付请求\]|\[.*?拒绝了.*?的代付请求\]|\[.*?拒绝了.*?的(?:视频|语音)通话\]|\[avatar-action:.*?\]|<thinking>[\s\S]*?<\/thinking>|^<thinking>[\s\S]*/;
+                invisibleRegex = /\[system:.*?\]|\[系统情景通知：.*?\]|\[.*?已接收礼物\]|\[.*?(?:接收|退回).*?的转账\]|\[.*?(?:接收|退还).*?的亲属卡\]|\[.*?(?:冻结|解冻|收回)了亲属卡\]|\[.*?调整亲属卡额度为：.*?\]|\[.*?同意了.*?的代付请求\]|\[.*?拒绝了.*?的代付请求\]|\[.*?拒绝了.*?的(?:视频|语音)通话\]|\[avatar-action:.*?\]|<thinking>[\s\S]*?<\/thinking>|^<thinking>[\s\S]*/;
             } else {
                 // 在末尾添加 |<thinking>[\s\S]*?<\/thinking>
-                invisibleRegex = /\[system:.*?\]|\[.*?更新状态为：.*?\]|\[.*?已接收礼物\]|\[.*?(?:接收|退回).*?的转账\]|\[.*?同意了.*?的代付请求\]|\[.*?拒绝了.*?的代付请求\]|\[.*?拒绝了.*?的(?:视频|语音)通话\]|\[avatar-action:.*?\]|<thinking>[\s\S]*?<\/thinking>|^<thinking>[\s\S]*/;
+                invisibleRegex = /\[system:.*?\]|\[系统情景通知：.*?\]|\[.*?更新状态为：.*?\]|\[.*?已接收礼物\]|\[.*?(?:接收|退回).*?的转账\]|\[.*?(?:接收|退还).*?的亲属卡\]|\[.*?(?:冻结|解冻|收回)了亲属卡\]|\[.*?调整亲属卡额度为：.*?\]|\[.*?同意了.*?的代付请求\]|\[.*?拒绝了.*?的代付请求\]|\[.*?拒绝了.*?的(?:视频|语音)通话\]|\[avatar-action:.*?\]|<thinking>[\s\S]*?<\/thinking>|^<thinking>[\s\S]*/;
             }
             if (!invisibleRegex.test(message.content)) {
                 senderChat.unreadCount = (senderChat.unreadCount || 0) + 1;
@@ -322,7 +346,11 @@ function addMessageBubble(message, targetChatId, targetChatType) {
         if (message.content.match(familyCardActionRegex) && message.role === 'assistant') {
             const actionMatch = message.content.match(familyCardActionRegex);
             const statusToSet = actionMatch[2] === '接收' ? 'accepted' : 'returned';
-            const lastPendingFcIndex = character.history.slice().reverse().findIndex(m => m.role === 'user' && m.familyCardId && m.familyCardStatus === 'pending');
+            let lastPendingFcIndex = character.history.slice().reverse().findIndex(m => m.role === 'user' && m.familyCardId && m.familyCardStatus === 'pending');
+            // WalletSystem 会在后台分支先落库；当前聊天界面仍需要找到刚更新的卡片刷新 DOM。
+            if (lastPendingFcIndex === -1 && message.familyCardActionProcessed) {
+                lastPendingFcIndex = character.history.slice().reverse().findIndex(m => m.role === 'user' && m.familyCardId && m.familyCardStatus === statusToSet);
+            }
             if (lastPendingFcIndex !== -1) {
                 const actualIndex = character.history.length - 1 - lastPendingFcIndex;
                 const fcMsg = character.history[actualIndex];
@@ -364,10 +392,10 @@ function addMessageBubble(message, targetChatId, targetChatType) {
             let invisibleRegex;
             if (character.showStatusUpdateMsg) {
                 // 修改：正则末尾增加了 |<thinking>[\s\S]*?<\/thinking>
-                invisibleRegex = /\[.*?(?:接收|退回).*?的转账\]|\[.*?已接收礼物\]|\[.*?同意了.*?的代付请求\]|\[.*?拒绝了.*?的代付请求\]|\[system:.*?\]|\[.*?邀请.*?加入了群聊\]|\[.*?修改群名为：.*?\]|\[system-display:.*?\]|\[.*?拒绝了.*?的(?:视频|语音)通话\]|\[avatar-action:.*?\]|<thinking>[\s\S]*?<\/thinking>|^<thinking>[\s\S]*/;
+                invisibleRegex = /\[.*?(?:接收|退回).*?的转账\]|\[.*?(?:接收|退还).*?的亲属卡\]|\[.*?(?:冻结|解冻|收回)了亲属卡\]|\[.*?调整亲属卡额度为[：:].*?\]|\[.*?已接收礼物\]|\[.*?同意了.*?的代付请求\]|\[.*?拒绝了.*?的代付请求\]|\[system:.*?\]|\[.*?邀请.*?加入了群聊\]|\[.*?修改群名为：.*?\]|\[system-display:.*?\]|\[.*?拒绝了.*?的(?:视频|语音)通话\]|\[avatar-action:.*?\]|<thinking>[\s\S]*?<\/thinking>|^<thinking>[\s\S]*/;
             } else {
                 // 修改：正则末尾增加了 |<thinking>[\s\S]*?<\/thinking>
-                invisibleRegex = /\[.*?(?:接收|退回).*?的转账\]|\[.*?更新状态为：.*?\]|\[.*?已接收礼物\]|\[.*?同意了.*?的代付请求\]|\[.*?拒绝了.*?的代付请求\]|\[system:.*?\]|\[.*?邀请.*?加入了群聊\]|\[.*?修改群名为：.*?\]|\[system-display:.*?\]|\[.*?拒绝了.*?的(?:视频|语音)通话\]|\[avatar-action:.*?\]|<thinking>[\s\S]*?<\/thinking>|^<thinking>[\s\S]*/;
+                invisibleRegex = /\[.*?(?:接收|退回).*?的转账\]|\[.*?(?:接收|退还).*?的亲属卡\]|\[.*?(?:冻结|解冻|收回)了亲属卡\]|\[.*?调整亲属卡额度为[：:].*?\]|\[.*?更新状态为：.*?\]|\[.*?已接收礼物\]|\[.*?同意了.*?的代付请求\]|\[.*?拒绝了.*?的代付请求\]|\[system:.*?\]|\[.*?邀请.*?加入了群聊\]|\[.*?修改群名为：.*?\]|\[system-display:.*?\]|\[.*?拒绝了.*?的(?:视频|语音)通话\]|\[avatar-action:.*?\]|<thinking>[\s\S]*?<\/thinking>|^<thinking>[\s\S]*/;
             }
             const isSystemMsg = /\[system:.*?\]|\[system-display:.*?\]/.test(message.content);
 

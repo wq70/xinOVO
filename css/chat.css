@@ -147,7 +147,9 @@
 .chat-list-header {
     background-color: #fff !important;
     padding: 15px 20px 5px 20px !important;
-    padding-top: max(15px, env(safe-area-inset-top)) !important;
+    padding-right: max(20px, var(--ovo-safe-area-right)) !important;
+    padding-left: max(20px, var(--ovo-safe-area-left)) !important;
+    padding-top: max(15px, var(--ovo-safe-area-top)) !important;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -391,7 +393,9 @@
     backdrop-filter: none !important;
     border-bottom: none !important;
     padding: 15px 20px !important;
-    padding-top: max(15px, env(safe-area-inset-top)) !important;
+    padding-right: max(20px, var(--ovo-safe-area-right)) !important;
+    padding-left: max(20px, var(--ovo-safe-area-left)) !important;
+    padding-top: max(15px, var(--ovo-safe-area-top)) !important;
 }
 
 #chat-room-header-default .title-container {
@@ -1463,8 +1467,7 @@
 .message-input-area {
     display: flex;
     align-items: center;
-    padding: 8px 12px;
-    padding-bottom: 8px;
+    padding: 8px max(12px, var(--ovo-safe-area-right)) calc(8px + var(--ovo-safe-area-bottom)) max(12px, var(--ovo-safe-area-left));
     border-top: none;
     background: var(--chat-bottom-bar-bg);
     flex-shrink: 0;
@@ -2388,7 +2391,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(12px + var(--ovo-safe-area-bottom));
     z-index: 1005;
     box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
     animation: statusBarSlideUp 0.25s ease-out;

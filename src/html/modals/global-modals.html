@@ -340,6 +340,10 @@
         <div class="modal-window" style="max-width: 90%; max-height: 70vh; overflow-y: auto;">
             <h3>发布新帖</h3>
             <form id="create-forum-post-form">
+                <div class="forum-post-compose-row">
+                    <label>类型<select id="forum-post-type-input" class="forum-compose-select"><option value="discussion">讨论</option><option value="record">记录</option><option value="question">问答</option><option value="poll">投票</option><option value="treehole">树洞</option><option value="event">活动</option></select></label>
+                    <label>可见范围<select id="forum-post-visibility-input" class="forum-compose-select"><option value="public">公开</option><option value="friends">仅好友</option><option value="private">仅自己</option></select></label>
+                </div>
                 <div class="form-group">
                     <label>标题</label>
                     <input type="text" id="forum-post-title-input" placeholder="请输入标题" maxlength="50" required autocomplete="off">
@@ -348,6 +352,10 @@
                     <label>内容</label>
                     <textarea id="forum-post-content-input" placeholder="分享你的想法..." rows="8" required></textarea>
                 </div>
+                <div class="form-group"><label>话题标签</label><input type="text" id="forum-post-tags-input" placeholder="用逗号分隔，可不填" autocomplete="off"></div>
+                <div class="form-group" id="forum-poll-options-group" style="display:none;"><label>投票选项</label><textarea id="forum-poll-options-input" rows="3" placeholder="每行一个选项，至少两项"></textarea></div>
+                <label class="forum-compose-anonymous"><span>匿名发布</span><span class="kkt-switch"><input type="checkbox" id="forum-post-anonymous-input"><span class="kkt-slider"></span></span></label>
+                <div class="forum-compose-draft-actions"><button type="button" class="btn btn-neutral btn-small" id="forum-save-draft-btn">保存草稿</button><button type="button" class="btn btn-neutral btn-small" id="forum-open-drafts-btn">草稿箱</button></div>
                 <div style="display:flex; gap:10px; margin-top:15px;">
                     <button type="submit" class="btn btn-primary" style="flex:1;">发布</button>
                     <button type="button" class="btn btn-neutral" id="cancel-forum-post-btn" style="flex:1;">取消</button>

@@ -22,8 +22,9 @@
 
     async function callVisionAPI(imageUrl) {
         if (!db || !db.apiSettings) throw new Error('API未配置');
-        let { url, key, model } = db.apiSettings;
-        if (!url || !key || !model) throw new Error('请先在 API 应用中完成设置');
+        const apiConfig = typeof getApiConfigForFeature === 'function' ? getApiConfigForFeature('avatarVision', db.apiSettings) : db.apiSettings;
+        let { url, key, model } = apiConfig;
+        if (typeof isApiConfigReady === 'function' ? !isApiConfigReady(apiConfig) : (!url || !key || !model)) throw new Error('请先在 API 应用中完成设置');
         if (url.endsWith('/')) url = url.slice(0, -1);
 
         const promptText = getAvatarRecognitionPrompt();
@@ -37,25 +38,8 @@
             }
         ];
 
-        const res = await fetch(`${url}/chat/completions`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${key}`
-            },
-            body: JSON.stringify({
-                model: model,
-                messages: messages,
-                temperature: 0.3
-            })
-        });
-
-        if (!res.ok) {
-            const errText = await res.text();
-            throw new Error('识别失败: ' + (errText || res.status));
-        }
-        const data = await res.json();
-        const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+        const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` };
+        const text = await fetchAiResponse(apiConfig, { model, messages, temperature: 0.3, stream: false }, headers, `${url}/chat/completions`, false);
         return (text && text.trim()) ? text.trim() : '未命名头像';
     }
 
@@ -92,18 +76,169 @@
         return char.coupleAvatarLibrary;
     }
 
+    function ensureAvatarRelationshipHistory(charOrCharId) {
+        const char = getChar(charOrCharId);
+        if (!char) return [];
+        if (!Array.isArray(char.avatarRelationshipHistory)) char.avatarRelationshipHistory = [];
+        return char.avatarRelationshipHistory;
+    }
+
+    function createAvatarId(prefix) {
+        return prefix + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    }
+
+    function describeAvatarItem(item, fallback) {
+        if (!item) return fallback || '未命名头像';
+        var name = (item.name || fallback || '未命名头像').trim();
+        var description = (item.description || '').trim().replace(/\s+/g, ' ');
+        if (!description || description === name) return name;
+        return name + '（' + (description.length > 80 ? description.slice(0, 80) + '…' : description) + '）';
+    }
+
+    function addAvatarRelationshipEvent(charOrCharId, event) {
+        var history = ensureAvatarRelationshipHistory(charOrCharId);
+        if (!history.length && !getChar(charOrCharId)) return;
+        history.push(Object.assign({ id: createAvatarId('avatar_event'), timestamp: Date.now() }, event || {}));
+        if (history.length > 100) history.splice(0, history.length - 100);
+    }
+
+    function getActiveCouple(char) {
+        if (!char || !char.activeCoupleAvatarId) return null;
+        return ensureCoupleAvatarLibrary(char).find(function (item) { return item && item.id === char.activeCoupleAvatarId; }) || null;
+    }
+
+    function clearActiveCoupleIfBroken(char, nextUserAvatar, nextCharAvatar, reason) {
+        var active = getActiveCouple(char);
+        if (!active) {
+            if (char && char.activeCoupleAvatarId) char.activeCoupleAvatarId = null;
+            return false;
+        }
+        var expectedUser = active.userAvatar && active.userAvatar.url;
+        var expectedChar = active.charAvatar && active.charAvatar.url;
+        var userChanged = nextUserAvatar !== undefined && nextUserAvatar !== expectedUser;
+        var charChanged = nextCharAvatar !== undefined && nextCharAvatar !== expectedChar;
+        if (!userChanged && !charChanged) return false;
+        char.activeCoupleAvatarId = null;
+        addAvatarRelationshipEvent(char, {
+            type: 'couple-broken',
+            coupleId: active.id,
+            coupleName: active.name || '未命名',
+            reason: reason || (userChanged ? 'user-avatar-changed' : 'character-avatar-changed')
+        });
+        return true;
+    }
+
+    function syncManualAvatarChange(charId, nextUserAvatar, nextCharAvatar) {
+        var char = getChar(charId);
+        if (!char) return false;
+        return clearActiveCoupleIfBroken(char, nextUserAvatar, nextCharAvatar, 'manual-avatar-changed');
+    }
+
+    function normalizeCropRect(values) {
+        if (!Array.isArray(values) || values.length < 4) throw new Error('裁剪坐标不完整');
+        var rect = values.slice(0, 4).map(function (value) { return Number(value); });
+        if (!rect.every(Number.isFinite)) throw new Error('裁剪坐标包含无效数字');
+        rect = rect.map(function (value) { return Math.max(0, Math.min(100, value)); });
+        if (rect[2] <= rect[0] || rect[3] <= rect[1]) throw new Error('裁剪区域宽高必须大于 0');
+        return rect;
+    }
+
+    function fingerprintDistance(left, right) {
+        if (!left || !right) return Infinity;
+        var leftParts = String(left).split(':');
+        var rightParts = String(right).split(':');
+        if (leftParts.length !== 2 || rightParts.length !== 2 || leftParts[1].length !== rightParts[1].length) return Infinity;
+        var leftColor = [leftParts[0].slice(0, 2), leftParts[0].slice(2, 4), leftParts[0].slice(4, 6)].map(function (part) { return parseInt(part, 16); });
+        var rightColor = [rightParts[0].slice(0, 2), rightParts[0].slice(2, 4), rightParts[0].slice(4, 6)].map(function (part) { return parseInt(part, 16); });
+        if (leftColor.some(function (value) { return !Number.isFinite(value); }) || rightColor.some(function (value) { return !Number.isFinite(value); })) return Infinity;
+        var colorDistance = Math.sqrt(leftColor.reduce(function (sum, value, index) {
+            return sum + Math.pow(value - rightColor[index], 2);
+        }, 0));
+        if (colorDistance > 45) return Infinity;
+        var bitCounts = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
+        var distance = 0;
+        for (var i = 0; i < leftParts[1].length; i++) {
+            var a = parseInt(leftParts[1][i], 16);
+            var b = parseInt(rightParts[1][i], 16);
+            if (!Number.isFinite(a) || !Number.isFinite(b)) return Infinity;
+            distance += bitCounts[a ^ b];
+        }
+        return distance;
+    }
+
+    function computeAvatarFingerprint(imageUrl) {
+        return new Promise(function (resolve) {
+            if (!imageUrl) {
+                resolve(null);
+                return;
+            }
+            var img = new Image();
+            if (/^https?:/i.test(imageUrl)) img.crossOrigin = 'anonymous';
+            img.onload = function () {
+                try {
+                    var canvas = document.createElement('canvas');
+                    canvas.width = 8;
+                    canvas.height = 8;
+                    var ctx = canvas.getContext('2d', { willReadFrequently: true });
+                    if (!ctx) throw new Error('Canvas unavailable');
+                    ctx.drawImage(img, 0, 0, 8, 8);
+                    var pixels = ctx.getImageData(0, 0, 8, 8).data;
+                    var values = [];
+                    var total = 0;
+                    var redTotal = 0;
+                    var greenTotal = 0;
+                    var blueTotal = 0;
+                    for (var i = 0; i < pixels.length; i += 4) {
+                        var value = Math.round(pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114);
+                        values.push(value);
+                        total += value;
+                        redTotal += pixels[i];
+                        greenTotal += pixels[i + 1];
+                        blueTotal += pixels[i + 2];
+                    }
+                    var average = total / values.length;
+                    var hex = '';
+                    for (var offset = 0; offset < values.length; offset += 4) {
+                        var nibble = 0;
+                        for (var bit = 0; bit < 4; bit++) nibble = (nibble << 1) | (values[offset + bit] >= average ? 1 : 0);
+                        hex += nibble.toString(16);
+                    }
+                    var colorHex = [redTotal, greenTotal, blueTotal].map(function (sum) {
+                        return Math.round(sum / values.length).toString(16).padStart(2, '0');
+                    }).join('');
+                    resolve(colorHex + ':' + hex);
+                } catch (error) {
+                    resolve(null);
+                }
+            };
+            img.onerror = function () { resolve(null); };
+            img.src = imageUrl;
+        });
+    }
+
     /** 按百分比裁剪图片，坐标 0–100。返回 dataURL */
     function cropImageByPercent(imageUrl, x1Pct, y1Pct, x2Pct, y2Pct) {
         return new Promise(function (resolve, reject) {
+            var rect;
+            try {
+                rect = normalizeCropRect([x1Pct, y1Pct, x2Pct, y2Pct]);
+            } catch (error) {
+                reject(error);
+                return;
+            }
             var img = new Image();
             img.crossOrigin = 'anonymous';
             img.onload = function () {
-                var w = img.width;
-                var h = img.height;
-                var x1 = Math.round(w * Math.max(0, Math.min(100, x1Pct)) / 100);
-                var y1 = Math.round(h * Math.max(0, Math.min(100, y1Pct)) / 100);
-                var x2 = Math.round(w * Math.max(0, Math.min(100, x2Pct)) / 100);
-                var y2 = Math.round(h * Math.max(0, Math.min(100, y2Pct)) / 100);
+                var w = img.naturalWidth || img.width;
+                var h = img.naturalHeight || img.height;
+                if (!w || !h) {
+                    reject(new Error('无法读取图片尺寸'));
+                    return;
+                }
+                var x1 = Math.round(w * rect[0] / 100);
+                var y1 = Math.round(h * rect[1] / 100);
+                var x2 = Math.round(w * rect[2] / 100);
+                var y2 = Math.round(h * rect[3] / 100);
                 var sw = Math.max(1, x2 - x1);
                 var sh = Math.max(1, y2 - y1);
                 var canvas = document.createElement('canvas');
@@ -117,7 +252,7 @@
                     reject(e);
                 }
             };
-            img.onerror = function () { reject(new Error('图片加载失败')); };
+            img.onerror = function () { reject(new Error('图片加载失败；若使用网络链接，图片来源可能不允许跨域裁剪，请改用本地上传')); };
             img.src = imageUrl;
         });
     }
@@ -168,12 +303,12 @@
                     existing.isEdited = true;
                 } else {
                     lib.push({
-                        id: 'avatar_' + Date.now(),
+                        id: createAvatarId('avatar'),
                         url: avatarUrl,
                         name: nameVal,
                         description: descVal || '',
                         recognizedAt: Date.now(),
-                        usedCount: 1,
+                        usedCount: 0,
                         lastUsedAt: Date.now(),
                         isEdited: !!recognizedText && (nameVal !== recognizedText || descVal !== recognizedText)
                     });
@@ -187,7 +322,33 @@
     async function getOrRecognizeAvatar(avatarUrl, charId) {
         const lib = ensureUserAvatarLibrary(charId);
         const cached = lib.find(a => a.url === avatarUrl);
-        if (cached) return cached.name;
+        if (cached) {
+            if (!cached.fingerprint) {
+                cached.fingerprint = await computeAvatarFingerprint(avatarUrl);
+                if (cached.fingerprint && typeof saveData === 'function') saveData();
+            }
+            return cached.name;
+        }
+
+        const fingerprint = await computeAvatarFingerprint(avatarUrl);
+        const visuallySimilar = fingerprint ? lib.find(function (item) {
+            return item && item.fingerprint && fingerprintDistance(item.fingerprint, fingerprint) <= 5;
+        }) : null;
+        if (visuallySimilar) {
+            lib.push({
+                id: createAvatarId('avatar'),
+                url: avatarUrl,
+                name: visuallySimilar.name || '未命名头像',
+                description: visuallySimilar.description || '',
+                recognizedAt: Date.now(),
+                usedCount: 0,
+                lastUsedAt: Date.now(),
+                fingerprint: fingerprint,
+                duplicateOf: visuallySimilar.id
+            });
+            if (typeof saveData === 'function') await saveData();
+            return visuallySimilar.name || '未命名头像';
+        }
 
         let recognizedText = '未命名头像';
         try {
@@ -196,20 +357,27 @@
             console.warn('Avatar recognition API error:', e);
             if (typeof showToast === 'function') showToast('识别失败，可手动输入描述');
         }
-        return await showRecognitionModal(avatarUrl, recognizedText, charId);
+        const result = await showRecognitionModal(avatarUrl, recognizedText, charId);
+        const added = lib.find(a => a.url === avatarUrl);
+        if (added && fingerprint) {
+            added.fingerprint = fingerprint;
+            if (typeof saveData === 'function') await saveData();
+        }
+        return result;
     }
 
     function notifyUserAvatarChange(charId, oldDesc, newDesc) {
         const char = db.characters.find(c => c.id === charId);
         if (!char || !char.history) return;
         const msg = {
-            id: 'msg_' + Date.now(),
+            id: createAvatarId('msg'),
             sender: 'system',
             content: '[avatar-action: 用户更换头像：从「' + (oldDesc || '旧头像') + '」换成「' + (newDesc || '新头像') + '」]',
             timestamp: Date.now(),
             isAvatarAction: true
         };
         char.history.push(msg);
+        addAvatarRelationshipEvent(char, { type: 'user-avatar-changed', oldDescription: oldDesc || '', newDescription: newDesc || '' });
     }
 
     async function recognizeAndNotifyUserAvatarChange(charId, oldAvatarUrl, newAvatarUrl) {
@@ -219,7 +387,7 @@
         const lib = ensureUserAvatarLibrary(char);
         let oldDesc = '旧头像';
         const oldInLib = lib.find(a => a.url === oldAvatarUrl);
-        if (oldInLib) oldDesc = oldInLib.name;
+        if (oldInLib) oldDesc = describeAvatarItem(oldInLib, '旧头像');
 
         const newDesc = await getOrRecognizeAvatar(newAvatarUrl, charId);
         const newInLib = lib.find(a => a.url === newAvatarUrl);
@@ -228,21 +396,22 @@
             newInLib.lastUsedAt = Date.now();
         }
 
-        notifyUserAvatarChange(charId, oldDesc, newDesc);
+        notifyUserAvatarChange(charId, oldDesc, newInLib ? describeAvatarItem(newInLib, newDesc) : newDesc);
 
-        if (char.charSenseCoupleAvatarEnabled && char.activeCoupleAvatarId) {
-            var coupleLib = ensureCoupleAvatarLibrary(char);
-            var activeCouple = coupleLib.find(function (c) { return c.id === char.activeCoupleAvatarId; });
+        if (char.activeCoupleAvatarId) {
+            var activeCouple = getActiveCouple(char);
             if (activeCouple && activeCouple.userAvatar && oldAvatarUrl === activeCouple.userAvatar.url) {
+                if (char.charSenseCoupleAvatarEnabled) {
                 var breakMsg = {
-                    id: 'msg_' + Date.now() + '_break',
+                    id: createAvatarId('msg_break'),
                     sender: 'system',
                     content: '[avatar-action: 用户在使用情头「' + (activeCouple.name || '未命名') + '」期间更换了头像，情头已被拆开]',
                     timestamp: Date.now(),
                     isAvatarAction: true
                 };
                 char.history.push(breakMsg);
-                char.activeCoupleAvatarId = null;
+                }
+                clearActiveCoupleIfBroken(char, newAvatarUrl, undefined, 'user-avatar-changed');
             }
         }
 
@@ -256,10 +425,10 @@
             const url = character.myAvatar;
             const lib = ensureUserAvatarLibrary(character);
             const current = lib.find(a => a.url === url);
-            const currentDesc = current ? current.name : '用户头像';
+            const currentDesc = describeAvatarItem(current, '用户头像');
             body += '【用户头像】当前: ' + currentDesc + '\n';
             const others = lib.filter(a => a.url !== url).sort((a, b) => (b.lastUsedAt || 0) - (a.lastUsedAt || 0)).slice(0, 5);
-            if (others.length) body += '用户历史头像(名称): ' + others.map(a => a.name).join('、') + '\n';
+            if (others.length) body += '用户历史头像: ' + others.map(a => describeAvatarItem(a, '未命名')).join('、') + '\n';
             body += '你能感知用户的头像变化。当用户换头像时，系统会通过隐藏消息通知你，格式为 [avatar-action: 用户更换头像：从「旧头像」换成「新头像」]。你可以在合适时机自然地提及这一变化。\n';
         }
         if (character.charCanSwitchAvatarEnabled) {
@@ -310,6 +479,17 @@
                 body += '【当前情头状态】你和用户当前没有使用任何情头。\n';
             }
         }
+        var relationshipHistory = (character.charSenseAvatarChangeEnabled || character.charSenseCoupleAvatarEnabled)
+            ? ensureAvatarRelationshipHistory(character).slice(-6) : [];
+        if (relationshipHistory.length) {
+            body += '【最近头像关系事件】\n';
+            relationshipHistory.forEach(function (event) {
+                if (event.type === 'user-avatar-changed') body += '- 用户头像从「' + (event.oldDescription || '旧头像') + '」换成「' + (event.newDescription || '新头像') + '」\n';
+                else if (event.type === 'couple-applied') body += '- 你们使用了情头「' + (event.coupleName || '未命名') + '」\n';
+                else if (event.type === 'couple-removed' || event.type === 'couple-broken') body += '- 情头「' + (event.coupleName || '未命名') + '」已取消\n';
+            });
+            body += '只在与当前话题自然相关时提及，不要机械重复评论头像变化。\n';
+        }
         if (!body) return '';
         return '\n<avatar_system>\n' + body + '</avatar_system>\n';
     }
@@ -321,9 +501,14 @@
         listEl.classList.remove('ar-delete-mode');
         const lib = ensureUserAvatarLibrary(char);
         listEl.innerHTML = '';
+        if (!lib.length) {
+            listEl.innerHTML = '<div class="ar-library-empty">暂无用户头像，可通过上方按钮上传</div>';
+            return;
+        }
         lib.forEach((item, idx) => {
             const card = document.createElement('div');
             card.className = 'ar-library-card ar-library-row-clickable';
+            if (item.url && item.url === char.myAvatar) card.classList.add('is-current');
             card.dataset.idx = String(idx);
             const timeStr = item.recognizedAt ? new Date(item.recognizedAt).toLocaleDateString() : '';
             const safeUrl = (item.url || '').replace(/"/g, '&quot;');
@@ -333,6 +518,7 @@
                 '<div class="ar-library-card-wrap">' +
                 '<img class="ar-library-thumb" src="' + safeUrl + '" alt="">' +
                 '<div class="ar-library-info"><span class="ar-library-name-text">' + safeName + '</span><span class="ar-library-meta">' + (item.usedCount || 0) + '次 ' + timeStr + '</span></div>' +
+                (item.url && item.url === char.myAvatar ? '<span class="ar-current-badge">使用中</span>' : '') +
                 '</div>';
             listEl.appendChild(card);
             card.addEventListener('click', function (e) {
@@ -371,7 +557,10 @@
         const closeEditModal = () => modal.classList.remove('visible');
 
         if (applyBtn) applyBtn.onclick = () => {
+            clearActiveCoupleIfBroken(char, item.url, undefined, 'manual-user-avatar-changed');
             char.myAvatar = item.url;
+            item.usedCount = (item.usedCount || 0) + 1;
+            item.lastUsedAt = Date.now();
             if (typeof saveData === 'function') saveData();
             if (typeof showToast === 'function') showToast('已应用为当前头像');
             const preview = document.getElementById('setting-my-avatar-preview');
@@ -425,8 +614,20 @@
 
         const doAdd = (nameVal, descVal) => {
             const lib = ensureUserAvatarLibrary(char);
+            const duplicate = lib.find(item => item && item.url === imageUrl);
+            if (duplicate) {
+                duplicate.name = nameVal || duplicate.name;
+                duplicate.description = descVal || duplicate.description || '';
+                duplicate.lastUsedAt = Date.now();
+                if (typeof saveData === 'function') saveData();
+                const duplicateListEl = document.getElementById('ar-library-list');
+                if (duplicateListEl && _avatarLibraryCurrentCharId === charId) renderLibraryList(char, duplicateListEl);
+                if (typeof showToast === 'function') showToast('这张图片已在用户头像库中，已更新信息');
+                finish();
+                return;
+            }
             lib.push({
-                id: 'avatar_' + Date.now(),
+                id: createAvatarId('avatar'),
                 url: imageUrl,
                 name: nameVal || '未命名头像',
                 description: descVal || '',
@@ -434,6 +635,13 @@
                 usedCount: 0,
                 lastUsedAt: Date.now(),
                 isEdited: false
+            });
+            computeAvatarFingerprint(imageUrl).then(function (fingerprint) {
+                var added = lib.find(function (item) { return item && item.url === imageUrl; });
+                if (added && fingerprint) {
+                    added.fingerprint = fingerprint;
+                    if (typeof saveData === 'function') saveData();
+                }
             });
             if (typeof saveData === 'function') saveData();
             const listEl = document.getElementById('ar-library-list');
@@ -460,13 +668,15 @@
         if (confirmBtn) {
             confirmBtn.onclick = () => {
                 if (useAiCheck && useAiCheck.checked) {
+                    confirmBtn.disabled = true;
                     callVisionAPI(imageUrl).then((recognizedText) => {
                         if (descInput) descInput.value = recognizedText || '';
+                        useAiCheck.checked = false;
                         if (typeof showToast === 'function') showToast('已识别，请填写名称后点击添加');
                     }).catch((e) => {
                         console.warn('User avatar recognition failed', e);
                         if (typeof showToast === 'function') showToast('识别失败，请手动填写名称');
-                    });
+                    }).finally(() => { confirmBtn.disabled = false; });
                     return;
                 }
                 const nameVal = nameInput && nameInput.value && nameInput.value.trim() ? nameInput.value.trim() : null;
@@ -568,12 +778,12 @@
         };
 
         const closeBtn = modal.querySelector('.ar-library-close-btn') || modal.querySelector('.ar-library-close');
-        if (closeBtn) closeBtn.addEventListener('click', () => {
+        if (closeBtn) closeBtn.onclick = () => {
             list.classList.remove('ar-delete-mode');
             if (batchDeleteBtn) batchDeleteBtn.textContent = '批量删除';
             modal.classList.remove('visible');
             _avatarLibraryCurrentCharId = null;
-        });
+        };
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
                 list.classList.remove('ar-delete-mode');

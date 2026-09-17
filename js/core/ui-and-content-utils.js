@@ -1126,4 +1126,139 @@ function normalizeMessagesForProvider(messages, provider) {
     return provider === 'claude' ? mergeAdjacentCompatMessages(mapped) : mapped;
 }
 
+const API_NODE_FEATURES = Object.freeze({
+    chat: '私聊回复', groupChat: '群聊回复', background: '后台主动消息', call: '通话回复',
+    summary: '对话总结', journal: '日记', forum: '论坛', theater: '小剧场', peek: '查手机',
+    shop: '商店内容', pomodoro: '番茄钟互动', battery: '电量互动', imageChat: '聊天图片理解',
+    stickerVision: '表情包理解', avatarVision: '头像理解', callVision: '通话画面理解',
+    memorySummary: '记忆总结', webSearch: '联网搜索'
+});
+
+const API_GENERATION_PARAMETER_DEFINITIONS = Object.freeze({
+    temperature: { label: '回复随机性', apiName: 'Temperature', type: 'number', min: 0, max: 2, step: 0.1, defaultValue: 1, defaultEnabled: true, support: ['openai_chat', 'deepseek', 'anthropic', 'gemini', 'ollama', 'custom'] },
+    topP: { label: '核采样范围', apiName: 'Top P', type: 'number', min: 0, max: 1, step: 0.05, defaultValue: 1, support: ['openai_chat', 'deepseek', 'anthropic', 'gemini', 'ollama', 'custom'] },
+    topK: { label: '候选词数量', apiName: 'Top K', type: 'integer', min: 1, max: 500, step: 1, defaultValue: 40, support: ['anthropic', 'gemini', 'ollama', 'custom'] },
+    minP: { label: '最低概率阈值', apiName: 'Min P', type: 'number', min: 0, max: 1, step: 0.01, defaultValue: 0, support: ['ollama', 'custom'] },
+    maxOutputTokens: { label: '最大输出 Tokens', apiName: 'Max Tokens', type: 'integer', min: 1, max: 200000, step: 1, defaultValue: 4096, support: ['openai_chat', 'deepseek', 'anthropic', 'gemini', 'ollama', 'custom'] },
+    frequencyPenalty: { label: '频率惩罚', apiName: 'Frequency Penalty', type: 'number', min: -2, max: 2, step: 0.1, defaultValue: 0, support: ['openai_chat', 'deepseek', 'gemini', 'custom'] },
+    presencePenalty: { label: '存在惩罚', apiName: 'Presence Penalty', type: 'number', min: -2, max: 2, step: 0.1, defaultValue: 0, support: ['openai_chat', 'deepseek', 'gemini', 'custom'] },
+    repetitionPenalty: { label: '重复惩罚', apiName: 'Repetition Penalty', type: 'number', min: 0, max: 2, step: 0.05, defaultValue: 1, support: ['ollama', 'custom'] },
+    seed: { label: '随机种子', apiName: 'Seed', type: 'integer', min: 0, max: 2147483647, step: 1, defaultValue: 0, support: ['openai_chat', 'deepseek', 'gemini', 'ollama', 'custom'] },
+    stopSequences: { label: '停止序列', apiName: 'Stop', type: 'text', defaultValue: '', support: ['openai_chat', 'deepseek', 'anthropic', 'gemini', 'ollama', 'custom'] },
+    candidateCount: { label: '候选回复数量', apiName: 'Candidate Count', type: 'integer', min: 1, max: 8, step: 1, defaultValue: 1, support: ['openai_chat', 'deepseek', 'gemini', 'custom'] },
+    responseFormat: { label: '输出格式', apiName: 'Response Format', type: 'select', defaultValue: 'text', options: [['text', '普通文本'], ['json_object', 'JSON 对象']], support: ['openai_chat', 'deepseek', 'gemini', 'custom'] }
+});
+
+function cloneApiGenerationValue(value) {
+    return value && typeof value === 'object' ? JSON.parse(JSON.stringify(value)) : value;
+}
+
+function createDefaultApiGenerationParams(nodeMode = false) {
+    return Object.fromEntries(Object.entries(API_GENERATION_PARAMETER_DEFINITIONS).map(([key, def]) => [key, nodeMode
+        ? { mode: 'inherit', value: cloneApiGenerationValue(def.defaultValue) }
+        : { enabled: !!def.defaultEnabled, value: cloneApiGenerationValue(def.defaultValue) }
+    ]));
+}
+
+function normalizeApiGenerationParams(params, nodeMode = false, legacyTemperature) {
+    const defaults = createDefaultApiGenerationParams(nodeMode);
+    const source = params && typeof params === 'object' ? params : {};
+    Object.keys(defaults).forEach(key => {
+        const entry = source[key];
+        if (!entry || typeof entry !== 'object') return;
+        if (nodeMode) defaults[key].mode = ['inherit', 'on', 'off'].includes(entry.mode) ? entry.mode : defaults[key].mode;
+        else if (typeof entry.enabled === 'boolean') defaults[key].enabled = entry.enabled;
+        if (entry.value !== undefined) defaults[key].value = cloneApiGenerationValue(entry.value);
+    });
+    if (!nodeMode && source.temperature === undefined && legacyTemperature !== undefined) {
+        defaults.temperature = { enabled: true, value: Number(legacyTemperature) };
+    }
+    return defaults;
+}
+
+function resolveApiGenerationParams(globalParams, node, legacyTemperature) {
+    const base = normalizeApiGenerationParams(globalParams, false, legacyTemperature);
+    if (!node || node.generationParamMode === 'inherit' || !node.generationParamMode) return base;
+    if (node.generationParamMode === 'provider') {
+        Object.values(base).forEach(entry => { entry.enabled = false; });
+        return base;
+    }
+    const overrides = normalizeApiGenerationParams(node.generationParams, true);
+    Object.keys(base).forEach(key => {
+        if (overrides[key].mode === 'on') base[key] = { enabled: true, value: cloneApiGenerationValue(overrides[key].value) };
+        if (overrides[key].mode === 'off') base[key] = { enabled: false, value: cloneApiGenerationValue(overrides[key].value) };
+    });
+    return base;
+}
+
+function apiNodeProtocolToProvider(protocol) {
+    if (protocol === 'anthropic') return 'claude';
+    if (protocol === 'gemini') return 'gemini';
+    if (protocol === 'deepseek') return 'deepseek';
+    if (protocol === 'ollama') return 'ollama';
+    return 'newapi';
+}
+
+function apiNodeToConfig(node) {
+    if (!node) return null;
+    const hasManagedGenerationParams = !!(
+        (typeof db !== 'undefined' && db.apiSettings?.generationParams)
+        || node.generationParamMode
+        || node.generationParams
+    );
+    return {
+        url: node.url || '', key: node.key || '', model: node.model || '',
+        provider: apiNodeProtocolToProvider(node.protocol), apiProtocol: node.protocol || 'openai_chat',
+        authMode: node.authMode || '', chatEndpoint: node.chatEndpoint || '', modelEndpoint: node.modelEndpoint || '',
+        customHeaders: node.customHeaders || '', customBody: node.customBody || '', imageMode: node.imageMode || '',
+        streamMode: node.streamMode || '', streamEnabled: typeof node.streamEnabled === 'boolean' ? node.streamEnabled : undefined,
+        generationParams: hasManagedGenerationParams ? resolveApiGenerationParams(
+            typeof db !== 'undefined' ? db.apiSettings?.generationParams : null,
+            node,
+            typeof db !== 'undefined' ? db.apiSettings?.temperature : undefined
+        ) : null,
+        sourceApiNodeId: node.id, sourceApiNodeName: node.name || '', _nodeId: node.id
+    };
+}
+
+function applyApiNodeRouteParameterMode(config, route) {
+    if (!config || !route) return config;
+    if (route.parameterMode === 'global') config.generationParams = normalizeApiGenerationParams(db.apiSettings?.generationParams, false, db.apiSettings?.temperature);
+    if (route.parameterMode === 'provider') config.generationParams = resolveApiGenerationParams(config.generationParams, { generationParamMode: 'provider' });
+    return config;
+}
+
+function getApiConfigForFeature(feature, legacyConfig) {
+    const nodes = (typeof db !== 'undefined' && Array.isArray(db.apiNodes))
+        ? db.apiNodes.filter(node => node && node.enabled !== false && Array.isArray(node.features) && node.features.includes(feature))
+        : [];
+    if (nodes.length === 1) return applyApiNodeRouteParameterMode(apiNodeToConfig(nodes[0]), db.apiNodeRoutes?.[feature]);
+    if (nodes.length > 1) {
+        const route = db.apiNodeRoutes && db.apiNodeRoutes[feature];
+        const selected = route && route.primaryNodeId && nodes.find(node => node.id === route.primaryNodeId);
+        if (selected) {
+            return applyApiNodeRouteParameterMode(apiNodeToConfig(selected), route);
+        }
+        // A conflict without an explicit user route must not silently pick a node.
+        return legacyConfig || null;
+    }
+    return legacyConfig || null;
+}
+
+function getApiFallbackConfigsForFeature(feature, currentNodeId) {
+    if (typeof db === 'undefined' || !Array.isArray(db.apiNodes)) return [];
+    const route = db.apiNodeRoutes && db.apiNodeRoutes[feature];
+    if (!route || route.failureMode !== 'automatic') return [];
+    return db.apiNodes
+        .filter(node => node && node.enabled !== false && node.id !== currentNodeId && Array.isArray(node.features) && node.features.includes(feature))
+        .map(node => {
+            return applyApiNodeRouteParameterMode(apiNodeToConfig(node), route);
+        });
+}
+
+function isApiConfigReady(config) {
+    if (!config || !config.url || !config.model) return false;
+    return !!config.key || config.authMode === 'none' || config.authMode === 'custom';
+}
+
 // 通用 AI 响应获取函数 (支持流式和非流式自动切换)

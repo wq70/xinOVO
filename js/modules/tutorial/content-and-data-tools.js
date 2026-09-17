@@ -376,6 +376,14 @@ function renderTutorialContent() {
                 db.forumUserProfile = { username: '', avatar: 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg', bio: '', joinDate: 0 };
                 db.forumSettings = db.forumSettings || {};
                 db.forumStrangerProfiles = {};
+                db.forumAccountStates = {};
+                db.forumRelationships = {};
+                db.forumKnowledge = [];
+                db.forumSocialEdges = [];
+                db.forumStoryThreads = [];
+                db.forumEvents = [];
+                db.forumNotifications = [];
+                db.forumDrafts = [];
                 db.forumFriendRequests = [];
                 db.forumPendingRequestFromUser = {};
                 report.push('论坛：已清空帖子、消息及绑定等');

@@ -4,15 +4,19 @@
 <head>
     <meta charset="UTF-8">
     <title>章鱼喷墨机</title>
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#121212" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="UwU" />
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="apple-touch-icon" href="https://i.postimg.cc/Vk042Snv/5F3BCD91056B989330AE34D11901BD6E.png">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="referrer" content="no-referrer" />
+
+    <!-- 必须在样式表之前识别 iOS/主屏幕模式，避免冷启动时顶栏先错位再跳动。 -->
+    <script src="js/core/ios-safe-area.js"></script>
 
     <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
     <script src="https://unpkg.com/dompurify@2.3.8/dist/purify.min.js"></script>
@@ -85,6 +89,8 @@
             </clipPath>
         </defs>
     </svg>
+    <!-- iOS 主屏幕 Web App 的系统顶栏可能向网页内投射模糊/阴影；真实元素供 WebKit 取色。 -->
+    <div id="ios-pwa-status-bar-guard" aria-hidden="true"></div>
     <div class="phone-screen"></div>
 
     <!-- 页面片段按顺序同步载入并装配；使用普通脚本以兼容 file:// 双击打开。 -->
@@ -141,9 +147,11 @@
     <script src="js/modules/mcp/protocol.js"></script>
     <script src="js/modules/mcp/manager.js"></script>
     <script src="js/modules/chat-ai/mcp-orchestrator.js"></script>
+    <script src="js/modules/chat-ai/reply-resilience.js"></script>
     <script src="js/modules/chat-ai/request-and-stream.js"></script>
     <script src="js/modules/chat-ai/response-and-control.js"></script>
     <script src="js/modules/chat-ai/prompt-helpers.js"></script>
+    <script src="js/modules/chat-ai/prompt-studio.js"></script>
     <script src="js/modules/chat-ai/private-prompt.js"></script>
     <script src="js/modules/chat-ai/token-stats.js"></script>
     <script src="js/modules/chat-ai/call-reply.js"></script>
@@ -155,6 +163,7 @@
     <script src="js/group-chat/settings-and-prompt.js"></script> <!-- 群聊系统：群聊管理、设置、Prompt生成 -->
     <script src="js/contacts.js"></script> <!-- 联系人：好友列表、名片 -->
     <script src="js/settings/chat-settings.js"></script>
+    <script src="js/settings/prompt-studio-settings.js"></script>
     <script src="js/settings/magic-room-settings.js"></script>
     <script src="js/modules/vector-memory-core.js"></script>
     <script src="js/settings/api-settings.js"></script>
@@ -171,6 +180,7 @@
     <!-- [3. 独立功能模块 (Plugins)] -->
     <script src="js/modules/sticker.js"></script> <!-- 表情包管理系统 -->
     <script src="js/modules/pomodoro.js"></script> <!-- 番茄钟专注功能 -->
+    <script src="js/modules/forum/core.js"></script>
     <script src="js/modules/forum/accounts-and-binding.js"></script>
     <script src="js/modules/forum/post-detail.js"></script>
     <script src="js/modules/forum/post-generation.js"></script>

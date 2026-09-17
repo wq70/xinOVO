@@ -1,13 +1,8 @@
 async function fetchAiResponse(settings, requestBody, headers, endpoint, forceStream = false) {
-    const { provider } = settings;
+    const prepared = prepareAiProviderRequest(settings, requestBody, headers, endpoint, forceStream);
+    requestBody = prepared.body; headers = prepared.headers; endpoint = prepared.endpoint;
+    const provider = prepared.provider;
     const streamEnabled = forceStream || settings.streamEnabled;
-
-    if (requestBody && Array.isArray(requestBody.messages)) {
-        requestBody = {
-            ...requestBody,
-            messages: normalizeMessagesForProvider(requestBody.messages, provider)
-        };
-    }
 
     // 1. 针对流式传输调整 Request Body 和 Endpoint
     if (streamEnabled) {
@@ -66,11 +61,7 @@ async function fetchAiResponse(settings, requestBody, headers, endpoint, forceSt
             throw new Error(`Failed to parse JSON response: ${text.substring(0, 100)}...`);
         }
 
-        if (provider === 'gemini') {
-            return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        } else {
-            return data.choices[0].message.content;
-        }
+        return extractAiProviderResponse(data, provider).content;
     }
 }
 
@@ -95,7 +86,7 @@ async function readStreamResponse(response, provider) {
                     if (data.trim() !== "[DONE]") {
                         try {
                             const json = JSON.parse(data);
-                            fullResponse += json.choices[0].delta?.content || "";
+                            fullResponse += extractAiProviderResponse(json, provider, true).content;
                         } catch (e) {}
                     }
                 }
@@ -110,7 +101,7 @@ async function readStreamResponse(response, provider) {
              if (data.trim() !== "[DONE]") {
                  try {
                      const json = JSON.parse(data);
-                     fullResponse += json.choices[0].delta?.content || "";
+                     fullResponse += extractAiProviderResponse(json, provider, true).content;
                  } catch (e) {}
              }
          }
@@ -122,7 +113,7 @@ async function readStreamResponse(response, provider) {
             // 尝试解析为 JSON 数组
             const parsedStream = JSON.parse(accumulatedChunk);
             if (Array.isArray(parsedStream)) {
-                fullResponse = parsedStream.map(item => item.candidates?.[0]?.content?.parts?.[0]?.text || "").join('');
+                fullResponse = parsedStream.map(item => extractAiProviderResponse(item, provider, true).content).join('');
             }
         } catch (e) {
             console.error("Gemini stream parsing failed", e);
@@ -506,6 +497,355 @@ function _image_base64Kind(b64) {
     if (value.startsWith('R0lGOD')) return 'image/gif';
     if (value.startsWith('UEsDB')) return 'application/zip';
     return '';
+}
+
+function parseOvoImageDataUrl(value) {
+    if (typeof value !== 'string') return null;
+    const match = value.match(/^data:([^;,]+);base64,([\s\S]+)$/i);
+    return match ? { mediaType: match[1].toLowerCase(), data: match[2] } : null;
+}
+
+function normalizeMultimodalPart(part, protocol) {
+    if (!part || typeof part !== 'object') return part;
+    if (part.type === 'text') return protocol === 'gemini' ? { text: part.text || '' } : { type: 'text', text: part.text || '' };
+    const raw = part.image_url?.url || part.url || '';
+    const data = parseOvoImageDataUrl(raw);
+    if (protocol === 'anthropic') {
+        if (data) return { type: 'image', source: { type: 'base64', media_type: data.mediaType, data: data.data } };
+        return { type: 'image', source: { type: 'url', url: raw } };
+    }
+    if (protocol === 'gemini') {
+        if (data) return { inlineData: { mimeType: data.mediaType, data: data.data } };
+        return { fileData: { fileUri: raw } };
+    }
+    return part;
+}
+
+function applyConfiguredImageMode(messages, mode) {
+    if (!mode) return messages;
+    return (messages || []).map(message => ({
+        ...message,
+        content: Array.isArray(message.content) ? message.content.map(part => {
+            if (part?.type !== 'image_url') return part;
+            const raw = part.image_url?.url || '';
+            const data = parseOvoImageDataUrl(raw);
+            if (mode === 'reject' || mode === 'description') throw new Error(mode === 'reject' ? '当前 API 节点被用户设置为不发送图片' : '当前 API 节点只接收图片描述，但本次调用没有可替代的描述');
+            if (mode === 'url') {
+                if (data) throw new Error('当前 API 节点被用户设置为仅发送图片 URL，但本次图片只有 Base64 数据');
+                return part;
+            }
+            if (mode === 'anthropic_base64' && data) return { type: 'image', source: { type: 'base64', media_type: data.mediaType, data: data.data } };
+            if (mode === 'gemini_inline' && data) return { inlineData: { mimeType: data.mediaType, data: data.data } };
+            return part;
+        }) : message.content
+    }));
+}
+
+function toAnthropicMessages(messages) {
+    const system = [];
+    const converted = [];
+    (messages || []).forEach(message => {
+        if (message.role === 'system' || message.role === 'developer') {
+            const content = typeof message.content === 'string' ? message.content : (message.content || []).filter(p => p.type === 'text').map(p => p.text).join('\n');
+            if (content) system.push(content); return;
+        }
+        const role = message.role === 'assistant' ? 'assistant' : 'user';
+        const content = Array.isArray(message.content) ? message.content.map(part => normalizeMultimodalPart(part, 'anthropic')) : message.content;
+        const previous = converted[converted.length - 1];
+        const sourceIds = message.__ovoMessageId ? [message.__ovoMessageId] : (message.__ovoMessageIds || []);
+        if (previous?.role === role) {
+            const oldParts = Array.isArray(previous.content) ? previous.content : [{ type: 'text', text: previous.content || '' }];
+            const newParts = Array.isArray(content) ? content : [{ type: 'text', text: content || '' }];
+            previous.content = oldParts.concat(newParts);
+            if (sourceIds.length) previous.__ovoMessageIds = [...(previous.__ovoMessageIds || []), ...sourceIds];
+        } else converted.push({ role, content, ...(sourceIds.length ? { __ovoMessageIds: sourceIds } : {}) });
+    });
+    return { system: system.join('\n\n'), messages: converted };
+}
+
+function toGeminiContents(messages) {
+    const system = [];
+    const contents = [];
+    (messages || []).forEach(message => {
+        if (message.role === 'system' || message.role === 'developer') {
+            const text = typeof message.content === 'string' ? message.content : (message.content || []).filter(p => p.type === 'text').map(p => p.text).join('\n');
+            if (text) system.push(text); return;
+        }
+        const role = message.role === 'assistant' ? 'model' : 'user';
+        const parts = Array.isArray(message.content) ? message.content.map(part => normalizeMultimodalPart(part, 'gemini')) : [{ text: message.content || '' }];
+        const previous = contents[contents.length - 1];
+        const sourceIds = message.__ovoMessageId ? [message.__ovoMessageId] : (message.__ovoMessageIds || []);
+        if (previous?.role === role) {
+            previous.parts.push(...parts);
+            if (sourceIds.length) previous.__ovoMessageIds = [...(previous.__ovoMessageIds || []), ...sourceIds];
+        } else contents.push({ role, parts, ...(sourceIds.length ? { __ovoMessageIds: sourceIds } : {}) });
+    });
+    return { systemInstruction: system.length ? { parts: [{ text: system.join('\n\n') }] } : undefined, contents };
+}
+
+function getLatestConversationTurnIds(history) {
+    const list = Array.isArray(history) ? history : [];
+    let lastAssistantIndex = -1;
+    list.forEach((message, index) => {
+        if (message && (message.role === 'assistant' || message.role === 'char')) lastAssistantIndex = index;
+    });
+    return list.slice(lastAssistantIndex + 1)
+        .filter(message => message && message.role === 'user' && message.id && !message.excludeFromContext && !message.isContextDisabled)
+        .map(message => message.id);
+}
+
+function protectLatestConversationTurn(messages, latestTurnIds) {
+    const ids = new Set((latestTurnIds || []).filter(Boolean));
+    if (!ids.size) return { messages: Array.isArray(messages) ? messages : [], protectedCount: 0 };
+    const list = Array.isArray(messages) ? [...messages] : [];
+    const currentTurn = [];
+    const remaining = [];
+    list.forEach(message => {
+        if (message && ids.has(message.__ovoMessageId)) currentTurn.push(message);
+        else remaining.push(message);
+    });
+    if (currentTurn.length !== ids.size) return { messages: list, protectedCount: currentTurn.length };
+
+    // Real assistant prefill must remain the final message. Other injected rules/triggers
+    // belong before the real current user turn so they cannot displace it as the trigger.
+    let prefill = null;
+    for (let index = remaining.length - 1; index >= 0; index--) {
+        const message = remaining[index];
+        if (message && message.role === 'assistant' && !message.__ovoMessageId) {
+            prefill = remaining.splice(index, 1)[0];
+            break;
+        }
+    }
+    remaining.push(...currentTurn);
+    if (prefill) remaining.push(prefill);
+    return { messages: remaining, protectedCount: currentTurn.length };
+}
+
+function validateAndStripLatestTurnProtection(body, protocol, latestTurnIds) {
+    const expected = new Set((latestTurnIds || []).filter(Boolean));
+    const entries = protocol === 'gemini' ? (body && body.contents || []) : (body && body.messages || []);
+    const positions = [];
+    entries.forEach((entry, index) => {
+        const ids = entry && (entry.__ovoMessageIds || (entry.__ovoMessageId ? [entry.__ovoMessageId] : []));
+        ids.forEach(id => { if (expected.has(id)) positions.push({ id, index, role: entry.role }); });
+    });
+    const found = new Set(positions.map(item => item.id));
+    const missingIds = [...expected].filter(id => !found.has(id));
+    const lastProtectedIndex = positions.length ? Math.max(...positions.map(item => item.index)) : -1;
+    const laterConversational = entries.slice(lastProtectedIndex + 1).filter(entry => {
+        if (!entry) return false;
+        if (protocol === 'gemini') return entry.role === 'user';
+        return entry.role === 'user';
+    });
+    const valid = expected.size > 0 && missingIds.length === 0 && laterConversational.length === 0;
+
+    stripLatestTurnProtectionMetadata(body);
+    return { valid, missingIds, protectedCount: found.size, roles: entries.map(entry => entry && entry.role || '') };
+}
+
+function stripLatestTurnProtectionMetadata(value) {
+    if (!value || typeof value !== 'object') return value;
+    delete value.__ovoMessageId;
+    delete value.__ovoMessageIds;
+    Object.values(value).forEach(stripLatestTurnProtectionMetadata);
+    return value;
+}
+
+function getGeminiThinkingLevels(model) {
+    const name = String(model || '').toLowerCase();
+    if (!/gemini-3/.test(name)) return null;
+    if (/gemini-3\.(?:7|8)-flash/.test(name) || /gemini-3\.1-pro/.test(name)) return ['low', 'medium', 'high'];
+    if (/gemini-3-pro/.test(name)) return ['low', 'high'];
+    if (/gemini-3\.1-flash-lite-image/.test(name)) return ['minimal', 'high'];
+    return ['minimal', 'low', 'medium', 'high'];
+}
+
+function applyNativeThinkingConfig(body, protocol, model, thinking) {
+    if (!thinking || typeof thinking !== 'object') return;
+    const enabled = thinking.enabled !== false;
+    const effort = thinking.effort || 'auto';
+    if (protocol === 'anthropic') {
+        if (!enabled) {
+            delete body.thinking;
+            delete body.output_config;
+        } else if (/claude-(?:3[-.]7|3-5|3\.5)/i.test(model || '')) {
+            const budgets = { minimal: 1024, low: 2048, medium: 4096, high: 8192, max: 16384 };
+            const budget_tokens = effort === 'auto' ? 4096 : (budgets[effort] || 4096);
+            body.thinking = { type: 'enabled', budget_tokens };
+            body.max_tokens = Math.max(body.max_tokens || 4096, budget_tokens + 1024);
+        } else {
+            body.thinking = { type: 'adaptive' };
+            if (effort !== 'auto') body.output_config = { ...(body.output_config || {}), effort };
+        }
+    } else if (protocol === 'gemini') {
+        body.generationConfig ||= {};
+        const isGemini3 = /gemini-3/i.test(model || '');
+        if (isGemini3) {
+            if (enabled && effort === 'auto') {
+                // "由模型决定" means omitting the level, not forcing high.
+                delete body.generationConfig.thinkingConfig;
+                return;
+            }
+            let level = enabled ? effort : 'minimal';
+            const supported = getGeminiThinkingLevels(model) || [];
+            if (!supported.includes(level)) {
+                const incompatible = thinking.incompatible || 'error';
+                if (incompatible === 'lowest') level = supported[0];
+                else if (incompatible === 'provider_default') {
+                    delete body.generationConfig.thinkingConfig;
+                    return;
+                } else {
+                    throw new Error(`${model || '当前 Gemini 模型'} 不支持思考等级“${level}”，请在思维链设置中选择兼容处理方式`);
+                }
+            }
+            body.generationConfig.thinkingConfig = { thinkingLevel: level };
+        }
+        else {
+            const budgets = { minimal: 0, low: 1024, medium: 4096, high: 8192, max: 16384 };
+            body.generationConfig.thinkingConfig = enabled ? (effort === 'auto' ? { includeThoughts: true } : { thinkingBudget: budgets[effort] ?? 4096, includeThoughts: true }) : { thinkingBudget: 0 };
+        }
+    } else if (protocol === 'deepseek') {
+        body.thinking = { type: enabled ? 'enabled' : 'disabled' };
+        if (enabled && effort !== 'auto') body.reasoning_effort = effort;
+    } else if (enabled && effort !== 'auto') body.reasoning_effort = effort;
+}
+
+function parseApiStopSequences(value) {
+    if (Array.isArray(value)) return value.map(item => String(item).trim()).filter(Boolean);
+    return String(value || '').split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+}
+
+function applyApiGenerationParams(body, settings, protocol) {
+    if (!settings?.generationParams || typeof settings.generationParams !== 'object') return body;
+    const params = normalizeApiGenerationParams(settings.generationParams, false, settings.temperature);
+    const isGemini = protocol === 'gemini';
+    const isAnthropic = protocol === 'anthropic';
+    const target = isGemini ? (body.generationConfig ||= {}) : body;
+    const mappings = isGemini ? {
+        temperature: 'temperature', topP: 'topP', topK: 'topK', maxOutputTokens: 'maxOutputTokens',
+        frequencyPenalty: 'frequencyPenalty', presencePenalty: 'presencePenalty', seed: 'seed',
+        stopSequences: 'stopSequences', candidateCount: 'candidateCount', responseFormat: 'responseMimeType'
+    } : isAnthropic ? {
+        temperature: 'temperature', topP: 'top_p', topK: 'top_k', maxOutputTokens: 'max_tokens', stopSequences: 'stop_sequences'
+    } : {
+        temperature: 'temperature', topP: 'top_p', topK: 'top_k', minP: 'min_p', maxOutputTokens: 'max_tokens',
+        frequencyPenalty: 'frequency_penalty', presencePenalty: 'presence_penalty', repetitionPenalty: 'repetition_penalty',
+        seed: 'seed', stopSequences: 'stop', candidateCount: 'n', responseFormat: 'response_format'
+    };
+    const allKnownFields = isGemini
+        ? ['temperature', 'topP', 'topK', 'minP', 'maxOutputTokens', 'frequencyPenalty', 'presencePenalty', 'repetitionPenalty', 'seed', 'stopSequences', 'candidateCount', 'responseMimeType']
+        : ['temperature', 'top_p', 'top_k', 'min_p', 'max_tokens', 'max_completion_tokens', 'frequency_penalty', 'presence_penalty', 'repetition_penalty', 'seed', 'stop', 'stop_sequences', 'n', 'response_format'];
+    allKnownFields.forEach(field => {
+        if (!(isAnthropic && field === 'max_tokens')) delete target[field];
+    });
+    Object.entries(params).forEach(([key, entry]) => {
+        const field = mappings[key];
+        if (!field || !entry.enabled) return;
+        let value = entry.value;
+        if (key === 'stopSequences') value = parseApiStopSequences(value);
+        if (key === 'responseFormat') {
+            if (value === 'text') return;
+            value = isGemini ? 'application/json' : { type: value };
+        }
+        if (value === '' || value === null || value === undefined || (Array.isArray(value) && !value.length)) return;
+        target[field] = value;
+    });
+    if (isAnthropic && !params.maxOutputTokens?.enabled) body.max_tokens ||= 4096;
+    return body;
+}
+
+function prepareAiProviderRequest(settings = {}, originalBody = {}, originalHeaders = {}, originalEndpoint = '', forceStream = false) {
+    const protocol = settings.apiProtocol || (settings.provider === 'gemini' ? 'gemini' : 'openai_chat');
+    const provider = protocol === 'anthropic' ? 'anthropic' : protocol === 'gemini' ? 'gemini' : protocol === 'deepseek' ? 'deepseek' : (settings.provider || 'newapi');
+    let body = JSON.parse(JSON.stringify(originalBody || {}));
+    let endpoint = settings.chatEndpoint || originalEndpoint;
+    let headers = { ...(originalHeaders || {}), ...(settings.customHeaders || {}) };
+    const thinking = body.__ovoThinking; delete body.__ovoThinking;
+    const messages = applyConfiguredImageMode(Array.isArray(body.messages) ? body.messages : [], settings.imageMode || '');
+    if (protocol === 'anthropic') {
+        const converted = toAnthropicMessages(messages);
+        body = { model: body.model || settings.model, max_tokens: body.max_tokens || body.maxTokens || 4096, messages: converted.messages, ...(converted.system ? { system: converted.system } : {}), ...(originalBody.temperature !== undefined ? { temperature: originalBody.temperature } : {}), stream: forceStream || settings.streamEnabled, ...(settings.customBody || {}) };
+        endpoint = endpoint && /\/messages(?:\?|$)/.test(endpoint) ? endpoint : `${settings.url.replace(/\/$/, '')}/v1/messages`;
+        delete headers.Authorization;
+        headers['x-api-key'] ||= getRandomValue(settings.key || ''); headers['anthropic-version'] ||= '2023-06-01'; headers['Content-Type'] = 'application/json';
+    } else if (protocol === 'gemini') {
+        if (messages.length) {
+            const converted = toGeminiContents(messages);
+            const { messages: _messages, __ovoThinking: _thinking, ...extras } = originalBody;
+            body = { ...extras, contents: converted.contents, ...(converted.systemInstruction ? { systemInstruction: converted.systemInstruction } : {}), generationConfig: { ...(originalBody.generationConfig || {}), ...(originalBody.temperature !== undefined ? { temperature: originalBody.temperature } : {}) }, ...(settings.customBody || {}) };
+        } else {
+            body = { ...body, ...(settings.customBody || {}) };
+            if (body.system_instruction && !body.systemInstruction) {
+                body.systemInstruction = body.system_instruction;
+                delete body.system_instruction;
+            }
+            if (Array.isArray(body.contents)) {
+                body.contents = body.contents.map(content => ({
+                    ...content,
+                    parts: (content.parts || []).map(part => {
+                        if (!part?.inline_data) return part;
+                        const inline = part.inline_data;
+                        const { inline_data: _legacyInline, ...rest } = part;
+                        return { ...rest, inlineData: { mimeType: inline.mime_type || inline.mimeType, data: inline.data } };
+                    })
+                }));
+            }
+        }
+        const method = forceStream || settings.streamEnabled ? 'streamGenerateContent' : 'generateContent';
+        if (!endpoint || !/:generateContent|:streamGenerateContent/.test(endpoint)) endpoint = `${settings.url.replace(/\/$/, '')}/v1beta/models/${encodeURIComponent(settings.model)}:${method}?key=${encodeURIComponent(getRandomValue(settings.key || ''))}`;
+        else endpoint = endpoint.replace(/:(?:streamGenerateContent|generateContent)/, `:${method}`);
+    } else {
+        body.messages = normalizeMessagesForProvider(messages, settings.provider);
+        body = { ...body, ...(settings.customBody || {}) };
+    }
+    if (settings.chatEndpoint) endpoint = settings.chatEndpoint.replace(/\{model\}/g, encodeURIComponent(settings.model || '')).replace(/\{key\}/g, encodeURIComponent(getRandomValue(settings.key || '')));
+    if (settings.authMode === 'none' || settings.authMode === 'custom') {
+        delete headers.Authorization;
+        delete headers['x-api-key'];
+        endpoint = endpoint.replace(/([?&])(?:key|api_key)=[^&]*&?/i, (match, separator) => separator === '?' ? '?' : '').replace(/[?&]$/, '');
+    }
+    if (settings.authMode === 'x-api-key') {
+        delete headers.Authorization;
+        headers['x-api-key'] = getRandomValue(settings.key || '');
+    } else if (settings.authMode === 'bearer' && settings.key) {
+        headers.Authorization = `Bearer ${getRandomValue(settings.key)}`;
+    } else if (settings.authMode === 'query' && settings.key && !/[?&](?:key|api_key)=/.test(endpoint)) {
+        delete headers.Authorization;
+        endpoint += `${endpoint.includes('?') ? '&' : '?'}key=${encodeURIComponent(getRandomValue(settings.key))}`;
+    }
+    applyApiGenerationParams(body, settings, protocol);
+    applyNativeThinkingConfig(body, protocol, settings.model, thinking);
+    return { body, headers, endpoint, provider, protocol };
+}
+
+function extractAiProviderResponse(data, provider, delta = false) {
+    if (provider === 'gemini') {
+        const parts = data?.candidates?.[0]?.content?.parts || [];
+        return {
+            content: parts.filter(part => !part.thought).map(part => part.text || '').join(''),
+            reasoning: parts.filter(part => part.thought).map(part => part.text || '').join(''),
+            thoughtSignatures: parts.map(part => part.thoughtSignature).filter(Boolean)
+        };
+    }
+    if (provider === 'anthropic') {
+        const blocks = data?.content || (data?.delta ? [data.delta] : []);
+        return { content: blocks.filter(block => block.type === 'text' || block.text).map(block => block.text || '').join(''), reasoning: blocks.filter(block => block.type === 'thinking').map(block => block.thinking || '').join('') };
+    }
+    const message = delta ? data?.choices?.[0]?.delta : data?.choices?.[0]?.message;
+    return { content: message?.content || '', reasoning: message?.reasoning_content || message?.reasoning || '' };
+}
+
+function getApiConfigEndpoint(settings, stream = false) {
+    if (settings.chatEndpoint) return settings.chatEndpoint;
+    const url = String(settings.url || '').replace(/\/$/, '');
+    if (settings.apiProtocol === 'anthropic') return `${url}/v1/messages`;
+    if (settings.apiProtocol === 'gemini' || settings.provider === 'gemini') return `${url}/v1beta/models/${encodeURIComponent(settings.model || '')}:${stream ? 'streamGenerateContent' : 'generateContent'}?key=${encodeURIComponent(getRandomValue(settings.key || ''))}`;
+    return `${url}/v1/chat/completions`;
+}
+
+function getApiConfigHeaders(settings) {
+    if (settings.apiProtocol === 'gemini' || settings.provider === 'gemini') return { 'Content-Type': 'application/json' };
+    return { 'Content-Type': 'application/json', Authorization: `Bearer ${getRandomValue(settings.key || '')}` };
 }
 
 function _nai_resolveBase64Image(b64) {

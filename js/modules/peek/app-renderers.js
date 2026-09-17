@@ -229,16 +229,45 @@ function renderPeekWallet(data) {
     const char = db.characters.find(c => c.id === currentChatId);
     const walletTheme = (char?.peekScreenSettings?.walletTheme === 'default') ? 'default' : 'ins';
 
+    const ledger = char?.walletLedger && typeof char.walletLedger === 'object' ? char.walletLedger : { balance: null, transactions: [] };
+    const realTransactions = Array.isArray(ledger.transactions) ? ledger.transactions : [];
+    const hasRealWalletData = realTransactions.length > 0 || typeof ledger.balance === 'number';
+    const hasWalletData = !!data || hasRealWalletData;
     const summary = data?.summary || {};
-    const income = data?.income || [];
-    const expense = data?.expense || [];
+    const generatedIncome = Array.isArray(data?.income) ? data.income : [];
+    const generatedExpense = Array.isArray(data?.expense) ? data.expense : [];
+    const formatLedgerItem = item => ({
+        amount: item.amount,
+        remark: item.remark || (item.source === 'family_card' ? '亲属卡支出' : '钱包交易'),
+        time: item.time ? new Date(item.time).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+        source: '真实流水',
+        eventId: item.eventId || item.id
+    });
+    const realIncome = realTransactions.filter(item => item.type === 'income').map(formatLedgerItem);
+    const realExpense = realTransactions.filter(item => item.type === 'expense').map(formatLedgerItem);
+    const mergeWalletItems = (realItems, generatedItems) => {
+        const result = [...realItems];
+        generatedItems.forEach(item => {
+            const amount = Number(item?.amount);
+            const remark = String(item?.remark || '').trim();
+            const duplicate = result.some(existing => Number(existing.amount) === amount && String(existing.remark || '').trim() === remark);
+            if (!duplicate) result.push(item);
+        });
+        return result;
+    };
+    const income = mergeWalletItems(realIncome, generatedIncome);
+    const expense = mergeWalletItems(realExpense, generatedExpense);
 
-    const balanceStr = summary.balance != null ? String(summary.balance) : '—';
-    const monthIncomeStr = summary.monthIncome != null ? String(summary.monthIncome) : '—';
-    const monthExpenseStr = summary.monthExpense != null ? String(summary.monthExpense) : '—';
+    const balanceStr = typeof ledger.balance === 'number' ? ledger.balance.toFixed(2) : (summary.balance != null ? String(summary.balance) : '—');
+    const monthStart = new Date();
+    monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+    const realMonthIncome = realTransactions.filter(item => item.type === 'income' && Number(item.time || 0) >= monthStart.getTime()).reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+    const realMonthExpense = realTransactions.filter(item => item.type === 'expense' && Number(item.time || 0) >= monthStart.getTime()).reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+    const monthIncomeStr = summary.monthIncome != null ? String(summary.monthIncome) : (realTransactions.length ? realMonthIncome.toFixed(2) : '—');
+    const monthExpenseStr = summary.monthExpense != null ? String(summary.monthExpense) : (realTransactions.length ? realMonthExpense.toFixed(2) : '—');
 
     let listHtml = '';
-    if (!data) {
+    if (!hasWalletData) {
         listHtml = '<p class="placeholder-text">正在生成账单...</p>';
     } else {
         const renderList = (items, type) => {
@@ -294,15 +323,15 @@ function renderPeekWallet(data) {
             <div class="wallet-summary-cards">
                 <div class="wallet-summary-card balance">
                     <div class="wallet-summary-label">当前余额</div>
-                    <div class="wallet-summary-value">${data ? peekEscapeHtml(balanceStr) : '—'}</div>
+                    <div class="wallet-summary-value">${hasWalletData ? peekEscapeHtml(balanceStr) : '—'}</div>
                 </div>
                 <div class="wallet-summary-card">
                     <div class="wallet-summary-label">本月收入</div>
-                    <div class="wallet-summary-value income">${data ? peekEscapeHtml(monthIncomeStr) : '—'}</div>
+                    <div class="wallet-summary-value income">${hasWalletData ? peekEscapeHtml(monthIncomeStr) : '—'}</div>
                 </div>
                 <div class="wallet-summary-card">
                     <div class="wallet-summary-label">本月支出</div>
-                    <div class="wallet-summary-value expense">${data ? peekEscapeHtml(monthExpenseStr) : '—'}</div>
+                    <div class="wallet-summary-value expense">${hasWalletData ? peekEscapeHtml(monthExpenseStr) : '—'}</div>
                 </div>
             </div>
             ${listHtml}
@@ -567,4 +596,3 @@ function extractTransfersFromHistory(history, realName, myName) {
     }
     return { income, expense };
 }
-

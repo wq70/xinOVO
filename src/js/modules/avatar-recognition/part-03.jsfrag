@@ -85,13 +85,15 @@
                     if (typeof showToast === 'function') showToast('请先上传图片');
                     return;
                 }
+                confirmBtn.disabled = true;
                 callVisionAPI(imgToRecognize).then(function (recognizedText) {
                     if (descInput) descInput.value = recognizedText || '';
+                    useAiCheck.checked = false;
                     if (typeof showToast === 'function') showToast('已识别，请填写名称后点击添加');
                 }).catch(function (e) {
                     console.warn('Couple avatar recognition failed', e);
                     if (typeof showToast === 'function') showToast('识别失败，请手动填写名称');
-                });
+                }).finally(function () { confirmBtn.disabled = false; });
                 return;
             }
             var nameVal = nameInput && nameInput.value && nameInput.value.trim() ? nameInput.value.trim() : null;
@@ -109,8 +111,21 @@
             }
             var descVal = descInput && descInput.value && descInput.value.trim() ? descInput.value.trim() : '';
             var lib = ensureCoupleAvatarLibrary(char);
+            var duplicate = lib.find(function (item) {
+                return item && item.userAvatar && item.charAvatar && item.userAvatar.url === userImageUrl && item.charAvatar.url === charImageUrl;
+            });
+            if (duplicate) {
+                duplicate.name = nameVal || duplicate.name;
+                duplicate.description = descVal || duplicate.description || '';
+                if (typeof saveData === 'function') saveData();
+                var duplicateListEl = document.getElementById('couple-avatar-library-list');
+                if (duplicateListEl && _coupleAvatarLibraryCurrentCharId === charId) renderCoupleLibraryList(char, duplicateListEl);
+                if (typeof showToast === 'function') showToast('这对图片已在情头库中，已更新信息');
+                finish();
+                return;
+            }
             lib.push({
-                id: 'couple_' + Date.now(),
+                id: createAvatarId('couple'),
                 name: nameVal,
                 description: descVal,
                 userAvatar: { url: userImageUrl },
@@ -192,7 +207,14 @@
                     return;
                 }
                 var indices = Array.from(checked).map(function (cb) { return parseInt(cb.dataset.idx, 10); }).sort(function (a, b) { return b - a; });
-                indices.forEach(function (i) { lib.splice(i, 1); });
+                indices.forEach(function (i) {
+                    var removed = lib[i];
+                    if (removed && removed.id === char.activeCoupleAvatarId) {
+                        char.activeCoupleAvatarId = null;
+                        addAvatarRelationshipEvent(char, { type: 'couple-removed', coupleId: removed.id, coupleName: removed.name, source: 'batch-deleted' });
+                    }
+                    lib.splice(i, 1);
+                });
                 if (typeof saveData === 'function') saveData();
                 renderCoupleLibraryList(char, list);
                 if (typeof showToast === 'function') showToast('已删除选中项');
@@ -205,7 +227,10 @@
         };
         if (clearAllBtn) clearAllBtn.onclick = function () {
             if (!confirm('确定清除本角色全部情头？')) return;
+            var active = getActiveCouple(char);
             char.coupleAvatarLibrary = [];
+            char.activeCoupleAvatarId = null;
+            if (active) addAvatarRelationshipEvent(char, { type: 'couple-removed', coupleId: active.id, coupleName: active.name, source: 'library-cleared' });
             if (typeof saveData === 'function') saveData();
             list.classList.remove('ar-delete-mode');
             if (batchDeleteBtn) batchDeleteBtn.textContent = '批量删除';
@@ -241,6 +266,9 @@
         ensureUserAvatarLibrary: ensureUserAvatarLibrary,
         ensureCharAvatarLibrary: ensureCharAvatarLibrary,
         ensureCoupleAvatarLibrary: ensureCoupleAvatarLibrary,
+        ensureAvatarRelationshipHistory: ensureAvatarRelationshipHistory,
+        syncManualAvatarChange: syncManualAvatarChange,
+        normalizeCropRect: normalizeCropRect,
         parseAvatarCommands: parseAvatarCommands,
         executeAvatarActions: executeAvatarActions
     };

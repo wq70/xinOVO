@@ -1,5 +1,11 @@
 function generatePrivateSystemPrompt(character, opts) {
     opts = opts || {};
+    if (window.PromptStudio && typeof window.PromptStudio.compile === 'function') {
+        const studioResult = window.PromptStudio.compile(character, opts);
+        if (studioResult && studioResult.prompt) {
+            return studioResult.prompt;
+        }
+    }
     const linkedChar = (character.source === 'forum' && character.linkedCharId && db.characters)
         ? db.characters.find(c => c.id === character.linkedCharId) : null;
     const effectiveChar = linkedChar || character;
@@ -16,8 +22,9 @@ function generatePrivateSystemPrompt(character, opts) {
     // 检查角色是否有专属的自定义提示词，或者全局是否开启了自定义提示词
     let useCustomPrompt = false;
     let template = '';
-    if (character.customPromptPreset && db.magicRoom && db.magicRoom.presets) {
-        const preset = db.magicRoom.presets.find(p => p.name === character.customPromptPreset);
+    const customPromptReference = character.customPromptPresetId || character.customPromptPreset;
+    if (customPromptReference && db.magicRoom && db.magicRoom.presets) {
+        const preset = db.magicRoom.presets.find(p => p.id === customPromptReference || p.name === customPromptReference);
         if (preset) {
             useCustomPrompt = true;
             template = preset.template;
@@ -100,6 +107,10 @@ function generatePrivateSystemPrompt(character, opts) {
         let outputFormats = getOnlineOutputFormats(character, worldBooksBefore, worldBooksAfter);
 
         // 替换变量
+        if (window.PromptStudio && typeof window.PromptStudio.buildVariables === 'function') {
+            const studioVariables = window.PromptStudio.buildVariables(character, opts);
+            template = window.PromptStudio.renderTemplate(template, studioVariables, new Set());
+        }
         template = template.replace(/\{\{当前时间\}\}/g, currentTime);
         template = template.replace(/\{\{世界书_前\}\}/g, worldBooksBefore || '');
         template = template.replace(/\{\{世界书_中\}\}/g, worldBooksMiddle || '');
@@ -488,7 +499,7 @@ function generatePrivateSystemPrompt(character, opts) {
             });
         }
         if (altForumUserIds.length > 0) {
-            let altBlock = '\n<alt_shared_memory>\n【小号记忆互通】你在论坛有小号，小号与用户在论坛私信的往来、以及若已加好友则加好友后的聊天，你都知道。以下为小号与用户的最近互动（最近' + syncLimit + '条）：\n\n';
+            let altBlock = '\n<alt_shared_memory>\n【小号记忆互通】你知道自己论坛小号发生的互动，但必须区分对方使用的论坛账号。除非已有掉马证据，不得把陌生小号直接认定为用户本人。以下为小号最近互动（最近' + syncLimit + '条）：\n\n';
             altForumUserIds.forEach(function(forumUserId) {
                 const profile = db.forumStrangerProfiles && db.forumStrangerProfiles[forumUserId];
                 const altName = (profile && profile.name) ? profile.name : (forumUserId.replace(/^npc_/, ''));
@@ -496,9 +507,12 @@ function generatePrivateSystemPrompt(character, opts) {
                     return (m.fromUserId === 'user' && m.toUserId === forumUserId) || (m.fromUserId === forumUserId && m.toUserId === 'user');
                 }).sort(function(a, b) { return (a.timestamp || 0) - (b.timestamp || 0); }).slice(-syncLimit);
                 if (forumMsgs.length > 0) {
-                    altBlock += '[论坛私信] 小号「' + altName + '」与用户：\n';
+                    altBlock += '[论坛私信] 角色小号「' + altName + '」：\n';
                     forumMsgs.forEach(function(m) {
-                        const from = m.fromUserId === 'user' ? '用户' : '小号';
+                        const accountId = m.accountId || 'main';
+                        const account = typeof forumGetAccountById === 'function' ? forumGetAccountById(accountId) : null;
+                        const accountLabel = account ? '论坛账号「' + (account.username || accountId) + '」' : '论坛账号「' + accountId + '」';
+                        const from = m.fromUserId === 'user' ? accountLabel : '角色小号';
                         altBlock += '- ' + from + '：' + (m.content || '').trim().slice(0, 200) + (m.content && m.content.length > 200 ? '…' : '') + '\n';
                     });
                     altBlock += '\n';
@@ -574,7 +588,9 @@ function generatePrivateSystemPrompt(character, opts) {
         prompt += '【注意：以下是你从' + character.myName + '处收到的亲属卡，不是你赠出的。】\n';
         prompt += character.myName + '给了你一张亲属卡（' + (userCardToChar.bankName || '亲属卡') + ' *' + (userCardToChar.cardNumber || '') + '）。额度：' + userCardToChar.limit + '元，已用：' + (userCardToChar.usedAmount || 0) + '，剩余：' + remaining + '元。刷新周期：' + (userCardToChar.refreshPeriod || '每月') + '。\n';
         if (recentTx) prompt += '你最近的消费记录：\n' + recentTx + '\n';
-        prompt += '消费会从' + character.myName + '的存钱罐扣除。你可以根据情况冻结、调整额度或收回这张亲属卡。\n</family_card_from_user>\n\n';
+        prompt += character.characterFamilyCardSpendingEnabled
+            ? '这张卡的主人允许你主动使用，消费会从' + character.myName + '的存钱罐扣除。冻结、调额和收回由卡主人决定。\n</family_card_from_user>\n\n'
+            : '你当前没有主动使用这张卡的权限，不得用它下单。冻结、调额和收回由卡主人决定。\n</family_card_from_user>\n\n';
     }
     if (charCardToUser) {
         const remaining = charCardToUser.limit - (charCardToUser.usedAmount || 0);
@@ -591,6 +607,16 @@ function generatePrivateSystemPrompt(character, opts) {
         prompt += '\n<family_card_to_user>\n';
         prompt += '【注意：你目前没有向' + character.myName + '赠送过亲属卡。只有在对话中实际发送赠送亲属卡指令后，才会出现赠予记录。请勿误称自己已赠出过亲属卡或编造卡号。】\n';
         prompt += '</family_card_to_user>\n\n';
+    }
+
+    if (character.walletLedger && Array.isArray(character.walletLedger.transactions) && character.walletLedger.transactions.length) {
+        const walletLines = character.walletLedger.transactions.slice(0, 8).map(item => {
+            const sign = item.type === 'income' ? '+' : '-';
+            return `${item.time ? new Date(item.time).toLocaleDateString('zh-CN') : ''} ${item.remark || '钱包交易'} ${sign}${item.amount || 0}元`;
+        }).join('\n');
+        prompt += '\n<character_wallet>\n';
+        if (typeof character.walletLedger.balance === 'number') prompt += `你的当前钱包余额：${character.walletLedger.balance.toFixed(2)}元。\n`;
+        prompt += `你的近期真实钱包流水：\n${walletLines}\n不要篡改这些已发生的交易。\n</character_wallet>\n\n`;
     }
 
     // 拉黑与好友申请记忆：若角色曾被拉黑并重新加回，注入申请历史与拉黑期间用户独白

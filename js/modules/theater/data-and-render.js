@@ -76,11 +76,12 @@ async function callChatCompletion(apiPayload, overrideSettings) {
         settings = (typeof db !== 'undefined' && db && db.apiSettings) ? db.apiSettings : null;
         if (!settings) throw new Error('未找到 API 设置(db.apiSettings)');
     }
+    if (typeof getApiConfigForFeature === 'function') settings = getApiConfigForFeature('theater', settings);
 
     let { url, key, model, provider } = settings;
     if (!model) model = apiPayload?.model;
 
-    if (!url || !key || !model) {
+    if (typeof isApiConfigReady === 'function' ? !isApiConfigReady(settings) : (!url || !key || !model)) {
         throw new Error('请先在"api"应用中完成设置（Base URL / Key / Model）');
     }
 

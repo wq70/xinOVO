@@ -1,7 +1,11 @@
 async function forumGenerateStrangerDMs() {
+    forumEnsureData();
+    var generationJob = forumStartJob('stranger-dm');
     const forumApiSettings = db.forumApiSettings || {};
     var apiSettings = forumApiSettings.useForumApi ? forumApiSettings : db.apiSettings;
-    if (!apiSettings.url || !apiSettings.key || !apiSettings.model) {
+    apiSettings = typeof getApiConfigForFeature === 'function' ? getApiConfigForFeature('forum', apiSettings) : apiSettings;
+    if (typeof isApiConfigReady === 'function' ? !isApiConfigReady(apiSettings) : (!apiSettings.url || !apiSettings.key || !apiSettings.model)) {
+        forumFinishJob(generationJob);
         showToast('请先配置API设置');
         return;
     }
@@ -12,7 +16,8 @@ async function forumGenerateStrangerDMs() {
         forumInitUserProfile();
         var activeAccount = forumGetActiveAccount();
         var worldContext = getForumGenerationContext();
-        var userPosts = (db.forumPosts || []).filter(function(p) { return p.authorId === 'user' || (p.authorId && p.authorId.startsWith('alt_')); });
+        var activeAuthorId = forumLegacyAuthorId(generationJob.accountId);
+        var userPosts = (db.forumPosts || []).filter(function(p) { return p.authorId === activeAuthorId || p.authorId === generationJob.accountId; });
         var userPostsText = '';
         if (userPosts.length === 0) {
             userPostsText = '用户暂无发帖记录。';
@@ -26,7 +31,7 @@ async function forumGenerateStrangerDMs() {
         (db.forumPosts || []).forEach(function(p) {
             if (!p.comments) return;
             p.comments.forEach(function(c) {
-            if ((c.authorId === 'user' || (c.authorId && c.authorId.startsWith('alt_'))) && (c.content || '').trim()) {
+            if ((c.authorId === activeAuthorId || c.authorId === generationJob.accountId) && (c.content || '').trim()) {
                     userCommentsList.push({ postTitle: p.title || '(无标题)', postContent: (p.content || '').slice(0, 80), comment: (c.content || '').trim() });
                 }
             });
@@ -71,11 +76,13 @@ async function forumGenerateStrangerDMs() {
             var dmMatch;
             while ((dmMatch = dmRegex.exec(contentStr)) !== null) {
                 var dmContent = dmMatch[1];
+                var idMatch = dmContent.match(/<senderId>([\s\S]*?)<\/senderId>/);
                 var sMatch = dmContent.match(/<senderName>([\s\S]*?)<\/senderName>/);
                 var cMatch = dmContent.match(/<content>([\s\S]*?)<\/content>/);
                 var pMatch = dmContent.match(/<basicPersona>([\s\S]*?)<\/basicPersona>/);
                 if (sMatch && cMatch) {
                     jsonData.dms.push({
+                        senderId: idMatch ? idMatch[1].trim() : '',
                         senderName: sMatch[1].trim(),
                         content: cMatch[1].trim(),
                         basicPersona: pMatch ? pMatch[1].trim() : ''
@@ -86,6 +93,7 @@ async function forumGenerateStrangerDMs() {
         }
 
         if (jsonData.dms.length > 0 || altCount > 0) {
+            if (!forumJobIsCurrent(generationJob)) throw new Error('本次生成已因切换身份或新请求而取消');
             if (!db.forumMessages) db.forumMessages = [];
             if (!db.forumStrangerProfiles) db.forumStrangerProfiles = {};
             var baseTime = Date.now();
@@ -93,22 +101,25 @@ async function forumGenerateStrangerDMs() {
             jsonData.dms.forEach(function(dm, i) {
                 var senderName = (dm.senderName || ('路人' + (i + 1))).trim().replace(/\s+/g, '_');
                 if (!senderName) senderName = '路人' + (i + 1);
-                var fromUserId = senderName.indexOf('npc_') === 0 ? senderName : 'npc_' + senderName;
+                var fromUserId = forumResolveNpcId(dm.senderId, senderName, 'generated-stranger');
                 db.forumMessages.push({
                     id: 'dm_' + baseTime + '_' + i + '_' + Math.random(),
                     fromUserId: fromUserId,
                     toUserId: 'user',
                     content: (dm.content || '').trim() || '你好',
                     timestamp: baseTime + i,
-                    isRead: false
+                    isRead: false,
+                    accountId: generationJob.accountId
                 });
-                if (generateDetailed && dm.basicPersona) {
-                    db.forumStrangerProfiles[fromUserId] = {
-                        name: senderName,
-                        basicPersona: (dm.basicPersona || '').trim() || ('论坛用户，昵称：' + senderName),
-                        avatar: (dm.avatar && dm.avatar.trim()) ? dm.avatar : FORUM_DEFAULT_AVATAR
-                    };
-                }
+                var previousProfile = db.forumStrangerProfiles[fromUserId] || {};
+                db.forumStrangerProfiles[fromUserId] = forumNormalizeNpcProfile(Object.assign({}, previousProfile, {
+                    name: senderName,
+                    basicPersona: (dm.basicPersona || previousProfile.basicPersona || '').trim() || ('论坛用户，昵称：' + senderName + '。更多信息会在交流中逐渐了解。'),
+                    publicPersona: (dm.basicPersona || previousProfile.publicPersona || '').trim(),
+                    avatar: (dm.avatar && dm.avatar.trim()) ? dm.avatar : (previousProfile.avatar || FORUM_DEFAULT_AVATAR),
+                    lastActiveAt: baseTime + i
+                }), fromUserId);
+                forumAdjustRelationship(fromUserId, { curiosity: 2 }, '陌生人因公开发言主动私信', generationJob.accountId);
                 offset = i + 1;
             });
             var altTemplates = ['你好呀，看到你的动态了～', '嗨，来打个招呼', '你好～', '看到你发的了，忍不住来聊两句'];
@@ -149,11 +160,15 @@ async function forumGenerateStrangerDMs() {
                     toUserId: 'user',
                     content: altTemplates[a % altTemplates.length],
                     timestamp: baseTime + offset + a,
-                    isRead: false
+                    isRead: false,
+                    accountId: generationJob.accountId
                 });
                 db.forumStrangerProfiles[fromUserId] = {
                     name: altDisplayName,
-                    basicPersona: (mainChar.persona || '').trim() || ('论坛用户，昵称：' + altDisplayName),
+                    basicPersona: '普通论坛用户，网名：' + altDisplayName + '。真实信息尚未公开。',
+                    publicPersona: '普通论坛用户，网名：' + altDisplayName + '。',
+                    privatePersona: (mainChar.persona || '').trim(),
+                    disguisePersona: '以陌生网友身份接近用户；未被识破前不得直接透露真实身份。',
                     avatar: FORUM_DEFAULT_AVATAR,
                     linkedCharId: charId
                 };
@@ -170,6 +185,7 @@ async function forumGenerateStrangerDMs() {
         console.error('生成陌生人私信失败:', error);
         showApiError(error);
     } finally {
+        forumFinishJob(generationJob);
         if (refreshBtn) refreshBtn.disabled = false;
     }
 }
@@ -180,11 +196,14 @@ async function forumGenerateAIDMReply() {
         return;
     }
     const targetUserId = forumCurrentDMUserId;
+    const generationJob = forumStartJob('dm-reply', targetUserId);
     
     const forumApiSettings = db.forumApiSettings || {};
     let apiSettings = forumApiSettings.useForumApi ? forumApiSettings : db.apiSettings;
+    apiSettings = typeof getApiConfigForFeature === 'function' ? getApiConfigForFeature('forum', apiSettings) : apiSettings;
     
-    if (!apiSettings.url || !apiSettings.key || !apiSettings.model) {
+    if (typeof isApiConfigReady === 'function' ? !isApiConfigReady(apiSettings) : (!apiSettings.url || !apiSettings.key || !apiSettings.model)) {
+        forumFinishJob(generationJob);
         showToast('请先配置API设置');
         return;
     }
@@ -192,18 +211,23 @@ async function forumGenerateAIDMReply() {
     const aiReplyBtn = document.getElementById('ai-reply-dm-btn');
     
     if (aiReplyBtn) aiReplyBtn.disabled = true;
+    if (typeof forumSetDMPresence === 'function') forumSetDMPresence('正在输入…');
     showToast('AI正在生成回复...');
     
     try {
-        const npcName = targetUserId.replace(/^npc_/, '');
-        const npcPosts = (db.forumPosts || []).filter(p => p.username === npcName);
         const npcProfile = getForumStrangerProfile(targetUserId);
+        const npcName = (npcProfile && npcProfile.name) || targetUserId.replace(/^npc_/, '');
+        const npcPosts = (db.forumPosts || []).filter(p => p.authorId === targetUserId || p.npcId === targetUserId);
         
         const worldContext = getForumGenerationContext();
         
         let npcContext = `这是一个名叫"${npcName}"的论坛用户。`;
         if (npcProfile && npcProfile.basicPersona) {
             npcContext += `\n\n基础人设:\n${npcProfile.basicPersona}`;
+        }
+        if (npcProfile && npcProfile.linkedCharId) {
+            const linkedChar = (db.characters || []).find(c => c.id === npcProfile.linkedCharId);
+            npcContext += `\n\n【双重身份，仅供扮演决策】\n真实身份：${linkedChar ? linkedChar.realName : '已绑定角色'}\n真实人格：${npcProfile.privatePersona || (linkedChar && linkedChar.persona) || ''}\n公开伪装：${npcProfile.publicPersona || npcProfile.basicPersona || ''}\n伪装规则：${npcProfile.disguisePersona || '未被可靠识破前维持陌生网友身份，只允许细微习惯形成破绽，不得无故自曝。'}`;
         }
         if (npcPosts.length > 0) {
             npcContext += `\n\n以下是Ta发过的帖子:\n`;
@@ -217,7 +241,7 @@ async function forumGenerateAIDMReply() {
         (db.forumPosts || []).forEach(p => {
             if (p.comments) {
                 p.comments.forEach(c => {
-                    if (c.username === npcName && c.authorId === 'npc') {
+                    if (c.authorId === targetUserId || c.npcId === targetUserId) {
                         npcComments.push({ postTitle: p.title, content: c.content });
                     }
                 });
@@ -237,8 +261,8 @@ async function forumGenerateAIDMReply() {
             : `用户资料:\n昵称: ${activeAccount.username}\n简介: ${activeAccount.bio || '无'}`;
         
         const conversation = (db.forumMessages || [])
-            .filter(m => (m.fromUserId === 'user' && m.toUserId === targetUserId) || 
-                         (m.fromUserId === targetUserId && m.toUserId === 'user'))
+            .filter(m => forumMessageBelongsToAccount(m, generationJob.accountId) && ((m.fromUserId === 'user' && m.toUserId === targetUserId) ||
+                         (m.fromUserId === targetUserId && m.toUserId === 'user')))
             .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
             .slice(-10);
         
@@ -253,6 +277,10 @@ async function forumGenerateAIDMReply() {
         }
         
         const replyCount = (db.forumSettings && db.forumSettings.detailReplyCount) || 2;
+        const relationship = forumGetRelationship(targetUserId, generationJob.accountId);
+        const relationshipContext = Object.assign({}, relationship);
+        delete relationshipContext.events;
+        const knownFacts = db.forumSettings.enableKnowledgeBoundaries === false ? [] : (db.forumKnowledge || []).filter(k => k.ownerId === targetUserId && k.accountId === generationJob.accountId && !k.denied).slice(-12);
         
         const systemPrompt = `你正在扮演论坛用户"${npcName}"，根据以下信息生成${replyCount}条连续的私信回复。
 
@@ -267,6 +295,11 @@ ${userContext}
 
 ===== 对话历史 =====
 ${conversationText}
+
+===== 关系与认知边界 =====
+当前关系状态：${JSON.stringify(relationshipContext)}
+你有来源、允许知道的事实：${knownFacts.length ? knownFacts.map(k => '[' + k.source + '] ' + k.fact).join('\n') : '暂无额外事实。只能使用公开资料和本次对话，不得读取其他账号或私密资料。'}
+互动偏好：主动程度 ${db.forumSettings.proactiveIntensity}/100；恋爱剧情倾向 ${db.forumSettings.romanceIntensity}/100；冲突剧情强度 ${db.forumSettings.conflictIntensity}/100。数值只调节出现概率与表达力度，不能覆盖人格、关系基础、知情范围与用户边界。
 
 ===== 好友状态（重要） =====
 当前是否已是好友：${forumIsFriend(targetUserId) ? '是' : '否'}。
@@ -289,7 +322,10 @@ ${conversationText}
     <reply>第二条回复内容</reply>
   </replies>
   <suggestFriend>false</suggestFriend>
+  <friendDecision>none</friendDecision>
+  <relationshipReason>本轮关系变化的简短原因</relationshipReason>
 </result>
+friendDecision 只能是 none、accept、reject、defer。仅当用户确实已发送好友申请时才决定 accept/reject/defer；必须服从角色人格、边界、信任和聊天深度，不得一律同意。
 `;
         
         let url = apiSettings.url;
@@ -317,8 +353,12 @@ ${conversationText}
         
         const suggestFriendMatch = contentStr.match(/<suggestFriend>([\s\S]*?)<\/suggestFriend>/i);
         const suggestFriend = suggestFriendMatch ? suggestFriendMatch[1].trim().toLowerCase() === 'true' : false;
+        const friendDecisionMatch = contentStr.match(/<friendDecision>([\s\S]*?)<\/friendDecision>/i);
+        const friendDecision = friendDecisionMatch ? friendDecisionMatch[1].trim().toLowerCase() : 'defer';
+        const relationshipReasonMatch = contentStr.match(/<relationshipReason>([\s\S]*?)<\/relationshipReason>/i);
         
         if (replies.length > 0) {
+            if (!forumJobIsCurrent(generationJob) || forumCurrentDMUserId !== targetUserId) throw new Error('本次回复已因切换身份、会话或新请求而取消');
             if (!db.forumMessages) db.forumMessages = [];
             
             replies.forEach((replyContent, index) => {
@@ -328,7 +368,8 @@ ${conversationText}
                     toUserId: 'user',
                     content: (replyContent && replyContent.trim) ? replyContent.trim() : String(replyContent),
                     timestamp: Date.now() + index,
-                    isRead: true
+                    isRead: true,
+                    accountId: generationJob.accountId
                 };
                 db.forumMessages.push(newMessage);
             });
@@ -337,13 +378,25 @@ ${conversationText}
             if (forumCurrentDMUserId === targetUserId) forumRenderDMConversation(targetUserId);
             showToast(`${npcName}发来了${replies.length}条消息`);
             
-            if (forumHasPendingFriendRequestFromUser(targetUserId)) {
+            forumAdjustRelationship(targetUserId, { familiarity: 2, privateCloseness: 1, curiosity: 1 }, relationshipReasonMatch ? relationshipReasonMatch[1].trim() : '继续私信交流', generationJob.accountId);
+            if (forumHasPendingFriendRequestFromUser(targetUserId) && friendDecision === 'accept') {
                 const profile = getForumStrangerProfile(targetUserId) || { name: npcName, avatar: '', basicPersona: '' };
-                forumAddForumNPCAsCharacter(profile, targetUserId);
+                if (!forumIsFriend(targetUserId)) forumAddForumNPCAsCharacter(profile, targetUserId);
                 forumSetPendingFriendRequestFromUser(targetUserId, false);
+                (db.forumFriendRequests || []).filter(r => r.accountId === generationJob.accountId && r.npcId === targetUserId && r.status === 'pending').forEach(r => { r.status = 'accepted'; r.resolvedAt = Date.now(); });
+                relationship.status = 'friend';
+                saveData();
                 showToast('已加为好友');
                 var addFriendBtn = document.getElementById('forum-dm-add-friend-btn');
                 if (addFriendBtn) { addFriendBtn.style.display = 'none'; }
+            } else if (forumHasPendingFriendRequestFromUser(targetUserId) && friendDecision === 'reject') {
+                forumSetPendingFriendRequestFromUser(targetUserId, false);
+                (db.forumFriendRequests || []).filter(r => r.accountId === generationJob.accountId && r.npcId === targetUserId && r.status === 'pending').forEach(r => { r.status = 'rejected'; r.resolvedAt = Date.now(); });
+                saveData();
+                forumAdjustRelationship(targetUserId, { guard: 8, grievance: 2 }, '角色拒绝好友申请', generationJob.accountId);
+                showToast(npcName + '拒绝了好友申请');
+            } else if (forumHasPendingFriendRequestFromUser(targetUserId) && friendDecision === 'defer') {
+                showToast(npcName + '暂时没有处理好友申请');
             } else if (suggestFriend && !forumIsFriend(targetUserId)) {
                 const profile = getForumStrangerProfile(targetUserId) || {};
                 forumShowFriendRequestModal({
@@ -360,6 +413,8 @@ ${conversationText}
         console.error('AI回复生成失败:', error);
         showApiError(error);
     } finally {
+        forumFinishJob(generationJob);
+        if (typeof forumSetDMPresence === 'function') forumSetDMPresence('');
         if (aiReplyBtn) aiReplyBtn.disabled = false;
     }
 }
@@ -367,11 +422,14 @@ ${conversationText}
 async function forumGenerateAICommentReplies(postId) {
     const post = db.forumPosts.find(p => p.id === postId);
     if (!post) return;
+    const generationJob = forumStartJob('detail-comment:' + postId, postId);
     
     const forumApiSettings = db.forumApiSettings || {};
     let apiSettings = forumApiSettings.useForumApi ? forumApiSettings : db.apiSettings;
+    apiSettings = typeof getApiConfigForFeature === 'function' ? getApiConfigForFeature('forum', apiSettings) : apiSettings;
     
-    if (!apiSettings.url || !apiSettings.key || !apiSettings.model) {
+    if (typeof isApiConfigReady === 'function' ? !isApiConfigReady(apiSettings) : (!apiSettings.url || !apiSettings.key || !apiSettings.model)) {
+        forumFinishJob(generationJob);
         showToast('请先配置API设置');
         return;
     }
@@ -387,10 +445,10 @@ async function forumGenerateAICommentReplies(postId) {
         let existingComments = '';
         let repliedNpcNames = [];
         if (post.comments && post.comments.length > 0) {
-            existingComments = '现有评论:\n';
+            existingComments = '现有评论（括号内是评论ID，回复时必须引用该ID）:\n';
             post.comments.forEach(c => {
                 const replyPrefix = c.replyTo ? `（回复 @${c.replyTo.username}）` : '';
-                existingComments += `${c.username}${replyPrefix}: ${c.content}\n`;
+                existingComments += `[评论ID:${c.id}][账号ID:${c.authorId || ''}] ${c.username}${replyPrefix}: ${c.content}\n`;
                 // 收集被用户回复过的NPC
                 if (c.replyTo && (c.authorId === 'user' || (c.authorId && c.authorId.startsWith('alt_')))) {
                     if (!repliedNpcNames.includes(c.replyTo.username)) {
@@ -421,9 +479,11 @@ ${repliedNpcHint}
 返回XML标签格式:
 <comments>
   <comment>
+    <commenterId>若继续回复现有评论者，填写该评论者的账号ID；新评论者留空</commenterId>
     <username>评论者昵称</username>
     <content>评论内容</content>
     <timestamp>刚刚</timestamp>
+    <replyToId>若回复现有评论则填写评论ID，否则留空</replyToId>
   </comment>
 </comments>
 `;
@@ -449,30 +509,44 @@ ${repliedNpcHint}
         let commentMatch;
         while ((commentMatch = commentRegex.exec(contentStr)) !== null) {
             const cContent = commentMatch[1];
+            const commenterIdMatch = cContent.match(/<commenterId>([\s\S]*?)<\/commenterId>/);
             const uMatch = cContent.match(/<username>([\s\S]*?)<\/username>/);
             const textMatch = cContent.match(/<content>([\s\S]*?)<\/content>/);
             const timeMatch = cContent.match(/<timestamp>([\s\S]*?)<\/timestamp>/);
+            const replyToMatch = cContent.match(/<replyToId>([\s\S]*?)<\/replyToId>/);
             if (uMatch && textMatch) {
                 comments.push({
+                    candidateNpcId: commenterIdMatch ? commenterIdMatch[1].trim() : '',
                     username: uMatch[1].trim(),
                     content: textMatch[1].trim(),
-                    timestamp: timeMatch ? timeMatch[1].trim() : '刚刚'
+                    timestamp: timeMatch ? timeMatch[1].trim() : '刚刚',
+                    replyToId: replyToMatch ? replyToMatch[1].trim() : ''
                 });
             }
         }
         
         if (comments.length > 0) {
+            if (!forumJobIsCurrent(generationJob) || !db.forumPosts.some(p => p.id === postId)) throw new Error('帖子已变化，本次评论未写入');
             if (!post.comments) post.comments = [];
             
             comments.forEach(comment => {
+                const npcId = forumResolveNpcId(comment.candidateNpcId, comment.username || '路人', 'detail-comment');
+                const replyTarget = comment.replyToId && post.comments.find(function(c) { return c.id === comment.replyToId; });
                 const newComment = {
-                    id: 'comment_' + Date.now() + '_' + Math.random(),
-                    authorId: 'npc',
+                    id: forumNewId('comment'),
+                    authorId: npcId,
+                    npcId: npcId,
                     username: comment.username || '路人' + Math.floor(100 + Math.random() * 900),
                     content: comment.content || '',
-                    timestamp: comment.timestamp || '刚刚'
+                    timestamp: comment.timestamp || '刚刚',
+                    timestampMs: Date.now(),
+                    replyTo: replyTarget ? { commentId: replyTarget.id, username: replyTarget.username } : undefined
                 };
                 post.comments.push(newComment);
+                if (replyTarget && String(replyTarget.authorId || '').indexOf('npc') === 0) forumRecordSocialInteraction(npcId, replyTarget.authorId, 'reply');
+                if (forumAccountOwnsAuthor(post.authorId, generationJob.accountId) || (replyTarget && forumAccountOwnsAuthor(replyTarget.authorId, generationJob.accountId))) {
+                    forumAddNotification(generationJob.accountId, 'comment_reply', (comment.username || '有人') + ' 回复了你的内容', { postId: postId, commentId: newComment.id, npcId: npcId });
+                }
             });
             
             await saveData();
@@ -484,6 +558,7 @@ ${repliedNpcHint}
         console.error('AI评论生成失败:', error);
         showApiError(error);
     } finally {
+        forumFinishJob(generationJob);
         if (aiReplyBtn) aiReplyBtn.disabled = false;
     }
 }

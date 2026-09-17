@@ -669,9 +669,17 @@ function openChatRoom(chatId, type) {
     }
     getReplyBtn.style.display = 'inline-flex';
     chatRoomScreen.style.backgroundImage = chat.chatBg ? `url(${chat.chatBg})` : (db.globalChatWallpaper ? `url(${db.globalChatWallpaper})` : 'none');
-    typingIndicator.style.display = 'none';
-    isGenerating = false;
-    getReplyBtn.disabled = false;
+    const hasActiveReply = !!(window.ReplyResilience && window.ReplyResilience.hasActive(chatId, type));
+    if (hasActiveReply) {
+        const typingName = type === 'private' ? (chat.remarkName || chat.realName || chat.name) : chat.name;
+        typingIndicator.textContent = `“${typingName}”正在输入中...`;
+        typingIndicator.style.display = 'block';
+    } else {
+        typingIndicator.style.display = 'none';
+    }
+    isGenerating = hasActiveReply;
+    getReplyBtn.disabled = hasActiveReply;
+    regenerateBtn.disabled = hasActiveReply;
     currentPage = 1;
     chatRoomScreen.className = chatRoomScreen.className.replace(/\bchat-active-[^ ]+\b/g, '');
     chatRoomScreen.classList.add(`chat-active-${chatId}`);
@@ -750,6 +758,7 @@ function openChatRoom(chatId, type) {
     updateCustomBubbleStyle(chatId, chat.customBubbleCss, chat.useCustomBubbleCss);
     renderMessages(false, true);
     switchScreen('chat-room-screen');
+    if (window.ReplyResilience) window.ReplyResilience.scheduleSessionSave();
 
     // 角色拉黑用户时的输入区覆盖层：仅根据当前角色状态显示，不修改输入框，避免跨角色污染
     var charBlockedOverlay = document.getElementById('char-blocked-overlay');

@@ -17,8 +17,9 @@ function getChatTokenBreakdown(chatId, chatType = 'private') {
     if (!chat) return null;
 
     let useCustomPrompt = false;
-    if (chatType === 'private' && chat.customPromptPreset && db.magicRoom && db.magicRoom.presets) {
-        const preset = db.magicRoom.presets.find(p => p.name === chat.customPromptPreset);
+    const customPromptReference = chat.customPromptPresetId || chat.customPromptPreset;
+    if (chatType === 'private' && customPromptReference && db.magicRoom && db.magicRoom.presets) {
+        const preset = db.magicRoom.presets.find(p => p.id === customPromptReference || p.name === customPromptReference);
         if (preset) useCustomPrompt = true;
     }
     
@@ -251,8 +252,14 @@ function getChatTokenBreakdown(chatId, chatType = 'private') {
 // 群聊 Token 分布（保持兼容，从完整 systemPrompt 拆分）
 function _getChatTokenBreakdownGroup(chat, chatType = 'group') {
     let systemPrompt = '';
+    let structuredPrompt = null;
     if (chatType === 'private') {
-        if (typeof generatePrivateSystemPrompt === 'function') {
+        if (window.PromptStudio && typeof window.PromptStudio.compile === 'function') {
+            structuredPrompt = window.PromptStudio.compile(chat, { preview: true });
+        }
+        if (structuredPrompt) {
+            systemPrompt = structuredPrompt.prompt;
+        } else if (typeof generatePrivateSystemPrompt === 'function') {
             systemPrompt = generatePrivateSystemPrompt(chat);
         }
     } else {
@@ -281,14 +288,20 @@ function _getChatTokenBreakdownGroup(chat, chatType = 'group') {
     const shortTermTokens = estimateTokenFromText(shortTermText);
     const total = promptPersonaTokens + longTermTokens + shortTermTokens;
 
-    const details = [
-        { key: 'promptPersona', name: '提示词人设', value: promptPersonaTokens, desc: '系统规则、角色设定、输出格式等发送给 AI 的固定提示词。' },
-        { key: 'longTermMemory', name: '长期记忆', value: longTermTokens, desc: '已收藏的共同回忆（日记摘要），会长期保留在上下文中。' },
-        { key: 'shortTermMemory', name: '短期记忆', value: shortTermTokens, desc: '最近对话消息，随轮次滑动窗口更新。' }
-    ].filter(d => d.value > 0);
+    const details = structuredPrompt
+        ? structuredPrompt.details.filter(entry => entry.text).map(entry => ({
+            key: `promptItem:${entry.id}`,
+            name: entry.name,
+            value: estimateTokenFromText(entry.text),
+            desc: '条目化系统提示词中的独立条目。'
+        })).concat([{ key: 'shortTermMemory', name: '短期记忆', value: shortTermTokens, desc: '最近对话消息，随轮次滑动窗口更新。' }]).filter(d => d.value > 0)
+        : [
+            { key: 'promptPersona', name: '提示词人设', value: promptPersonaTokens, desc: '系统规则、角色设定、输出格式等发送给 AI 的固定提示词。' },
+            { key: 'longTermMemory', name: '长期记忆', value: longTermTokens, desc: '已收藏的共同回忆（日记摘要），会长期保留在上下文中。' },
+            { key: 'shortTermMemory', name: '短期记忆', value: shortTermTokens, desc: '最近对话消息，随轮次滑动窗口更新。' }
+        ].filter(d => d.value > 0);
 
     return { total, details };
 }
 
 // --- 视频/语音通话专用 AI 逻辑 ---
-

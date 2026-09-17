@@ -64,6 +64,32 @@ function collectDocumentInfo(document) {
     return { ids, scripts, styles };
 }
 
+function findNodeById(document, targetId) {
+    let result = null;
+    function walk(node) {
+        if (result) return;
+        const id = node.attrs?.find(attr => attr.name === 'id')?.value;
+        if (id === targetId) {
+            result = node;
+            return;
+        }
+        for (const child of node.childNodes || []) walk(child);
+    }
+    walk(document);
+    return result;
+}
+
+function nearestScreenId(node) {
+    let current = node;
+    while (current) {
+        if (current.attrs?.some(attr => attr.name === 'class' && attr.value.split(/\s+/).includes('screen'))) {
+            return current.attrs.find(attr => attr.name === 'id')?.value || '';
+        }
+        current = current.parentNode;
+    }
+    return '';
+}
+
 function getNonScriptDomSignature(document) {
     const entries = [];
     function walk(node) {
@@ -87,6 +113,14 @@ function getNonScriptDomSignature(document) {
 const html = read('index.html');
 const expectedHtml = expandTemplate(read('src/index.template.html'));
 if (html !== expectedHtml) fail('index.html is stale; run npm run build');
+if (!html.includes('<meta name="apple-mobile-web-app-status-bar-style" content="default">')) {
+    fail('iOS status bar mode must remain non-overlay to protect interactive headers');
+}
+if (!html.includes('<script src="js/core/ios-safe-area.js"></script>')) {
+    fail('The early iOS safe-area bootstrap is missing');
+}
+const manifest = JSON.parse(read('manifest.json'));
+if (manifest.display !== 'standalone') fail(`Expected standalone PWA display mode, found ${manifest.display}`);
 if (Buffer.byteLength(html, 'utf8') >= 50 * 1024) {
     fail(`Compact index.html must stay below 50 KB; found ${(Buffer.byteLength(html, 'utf8') / 1024).toFixed(1)} KB`);
 }
@@ -133,24 +167,40 @@ if (retainedLegacyTagErrors.length > 1) {
 }
 
 const logicalInfo = collectDocumentInfo(logicalDocument);
-const protectedDomSignature = 'a24145bbe07f394c8f503243a0fd1f9ca894dbe466529f386842c61c22ac0067';
+const protectedDomSignature = '88a54c6656d6e8d39caf2f9346bc54fb8de957108d5fc2d21b94484ec050f427';
 const actualDomSignature = getNonScriptDomSignature(logicalDocument);
 if (actualDomSignature !== protectedDomSignature) {
     fail(`Assembled non-script DOM differs from the protected pre-split structure: ${actualDomSignature}`);
 }
 const textualIds = [...logicalHtml.matchAll(/\bid\s*=\s*["']([^"']+)["']/gi)].map(match => match[1]);
 const duplicateIds = [...new Set(textualIds.filter((id, index) => textualIds.indexOf(id) !== index))];
-if (textualIds.length !== 2210) fail(`Expected 2210 assembled IDs, found ${textualIds.length}`);
+if (textualIds.length !== 2343) fail(`Expected 2343 assembled IDs, found ${textualIds.length}`);
 if (duplicateIds.length) fail(`Duplicate assembled IDs: ${duplicateIds.join(', ')}`);
 
 const requiredIds = [
     'home-screen', 'chat-list-screen', 'contacts-screen', 'chat-room-screen',
-    'api-settings-screen', 'chat-settings-screen', 'group-settings-screen',
+    'api-settings-screen', 'api-generation-params', 'api-generation-reset-values',
+    'api-node-editor-screen', 'api-node-edit-form', 'api-node-generation-mode', 'api-node-generation-params',
+    'chat-settings-screen', 'group-settings-screen',
     'memory-table-screen', 'forum-screen', 'peek-screen', 'node-system-screen',
     'storage-screen', 'mcp-screen', 'mcp-panel', 'mcp-sheet', 'mcp-import-input',
+    'ios-pwa-status-bar-guard',
+    'keep-alive-auto-wake-enabled', 'keep-alive-use-builtin-btn', 'keep-alive-playback-status',
+    'keep-alive-page-status', 'keep-alive-wake-status', 'keep-alive-task-status',
 ];
 for (const id of requiredIds) {
     if (!logicalInfo.ids.includes(id)) fail(`Required assembled UI element is missing: #${id}`);
+}
+if (logicalInfo.ids.includes('api-node-edit-modal')) {
+    fail('The API node editor must not regress to the nested modal structure');
+}
+const apiNodeEditor = findNodeById(logicalDocument, 'api-node-editor-screen');
+const apiNodeForm = findNodeById(logicalDocument, 'api-node-edit-form');
+if (apiNodeEditor && nearestScreenId(apiNodeEditor.parentNode)) {
+    fail('#api-node-editor-screen must be a top-level screen, not nested inside another screen');
+}
+if (apiNodeForm && nearestScreenId(apiNodeForm) !== 'api-node-editor-screen') {
+    fail('#api-node-edit-form must belong to #api-node-editor-screen');
 }
 
 const compactDocument = parse(html);

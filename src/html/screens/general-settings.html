@@ -349,6 +349,114 @@
                                 </label>
                             </div>
                         </div>
+                        <div class="kkt-item cot-config-row">
+                            <div class="kkt-item-label">运行方式<p>未选择时沿用现有思维链行为</p></div>
+                            <div class="kkt-item-control">
+                                <select id="cot-run-mode" class="cot-compact-select">
+                                    <option value="">未选择</option>
+                                    <option value="direct">直接回复</option>
+                                    <option value="native">模型原生思考</option>
+                                    <option value="preset">思维链预设</option>
+                                    <option value="native_preset">原生思考＋预设</option>
+                                    <option value="custom">完全自定义</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="kkt-item cot-config-row">
+                            <div class="kkt-item-label">原生思考程度</div>
+                            <div class="kkt-item-control">
+                                <select id="cot-native-effort" class="cot-compact-select">
+                                    <option value="">未选择</option>
+                                    <option value="auto">由模型决定</option>
+                                    <option value="minimal">最低</option>
+                                    <option value="low">较低</option>
+                                    <option value="medium">中等</option>
+                                    <option value="high">较高</option>
+                                    <option value="max">最高</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="kkt-item cot-config-row">
+                            <div class="kkt-item-label">思考参数不兼容时<p>例如部分 Gemini Flash 不支持“最低”</p></div>
+                            <div class="kkt-item-control">
+                                <select id="cot-native-failure" class="cot-compact-select">
+                                    <option value="">未选择</option>
+                                    <option value="lowest">使用该模型最低可用等级</option>
+                                    <option value="provider_default">不发送参数，使用模型默认</option>
+                                    <option value="ask">每次由我选择</option>
+                                    <option value="error">停止并显示错误</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="kkt-item cot-config-row">
+                            <div class="kkt-item-label">回复预填<p>真实预填不受支持时不会静默替换</p></div>
+                            <div class="kkt-item-control">
+                                <select id="cot-prefill-mode" class="cot-compact-select">
+                                    <option value="">未选择</option>
+                                    <option value="legacy_quick">沿用快速回复压制方式</option>
+                                    <option value="real">真实 Assistant 预填</option>
+                                    <option value="simulated">提示词模拟预填</option>
+                                    <option value="off">不使用预填</option>
+                                    <option value="ask">每次询问</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="kkt-item cot-config-row">
+                            <div class="kkt-item-label">快速回复<p>保留现有压制原生思考的特殊行为</p></div>
+                            <div class="kkt-item-control">
+                                <label class="kkt-switch">
+                                    <input type="checkbox" id="cot-quick-reply-switch">
+                                    <span class="kkt-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="cot-advanced-toggle-wrap">
+                            <button type="button" id="cot-advanced-toggle" class="btn btn-small">展开协议选项</button>
+                        </div>
+                        <div id="cot-advanced-options" class="cot-advanced-options" hidden>
+                            <div class="kkt-item cot-config-row">
+                                <div class="kkt-item-label">触发词</div>
+                                <div class="kkt-item-control cot-inline-controls">
+                                    <select id="cot-trigger-mode" class="cot-compact-select">
+                                        <option value="">未选择</option><option value="on">启用</option><option value="off">关闭</option><option value="ask">每次询问</option>
+                                    </select>
+                                    <input id="cot-trigger-content" class="cot-mini-input" placeholder="[incipere]">
+                                </div>
+                            </div>
+                            <div class="kkt-item cot-config-row">
+                                <div class="kkt-item-label">预填内容</div>
+                                <div class="kkt-item-control"><input id="cot-prefill-content" class="cot-mini-input" placeholder="<thinking>"></div>
+                            </div>
+                            <div class="kkt-item cot-config-row">
+                                <div class="kkt-item-label">模拟预填内容</div>
+                                <div class="kkt-item-control"><textarea id="cot-simulated-prefill-content" class="cot-mini-textarea" rows="2" placeholder="要求模型从指定格式开始回复"></textarea></div>
+                            </div>
+                            <div class="kkt-item cot-config-row">
+                                <div class="kkt-item-label">思考标签</div>
+                                <div class="kkt-item-control cot-inline-controls">
+                                    <select id="cot-tag-mode" class="cot-compact-select"><option value="">未选择</option><option value="on">启用</option><option value="off">关闭</option></select>
+                                    <input id="cot-tag-start" class="cot-tiny-input" placeholder="<thinking>">
+                                    <input id="cot-tag-end" class="cot-tiny-input" placeholder="</thinking>">
+                                </div>
+                            </div>
+                            <div class="kkt-item cot-config-row">
+                                <div class="kkt-item-label">预填被拒绝时</div>
+                                <div class="kkt-item-control">
+                                    <select id="cot-prefill-failure" class="cot-compact-select">
+                                        <option value="">未选择</option><option value="retry_without">移除预填后重试</option><option value="retry_simulated">模拟预填后重试</option><option value="fallback">切换备用节点</option><option value="ask">询问</option><option value="error">保留错误</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="kkt-item cot-config-row">
+                                <div class="kkt-item-label">思考展示</div>
+                                <div class="kkt-item-control">
+                                    <select id="cot-display-mode" class="cot-compact-select">
+                                        <option value="">未选择</option><option value="hidden">不显示</option><option value="summary">显示摘要</option><option value="detail">折叠显示详情</option><option value="save_only">保存但不显示</option><option value="ask">每次询问</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="cot-save-policy-row"><button type="button" id="cot-save-policy-btn" class="btn btn-primary btn-small">保存当前场景协议</button><span id="cot-policy-status" aria-live="polite"></span></div>
+                        </div>
                     </div>
 
                     <!-- 预设管理 -->
@@ -387,8 +495,8 @@
 
         <!-- CoT Item Edit Modal -->
         <div id="cot-item-edit-modal" class="modal-overlay">
-            <div class="modal-window">
-                <h3>编辑条目</h3>
+            <div class="modal-window cot-item-editor-window">
+                <h3 id="cot-item-editor-title">编辑条目</h3>
                 <form id="cot-item-edit-form">
                     <input type="hidden" id="cot-item-id">
                     <div class="form-group">
@@ -400,6 +508,24 @@
                         <textarea id="cot-item-content" rows="10" required
                             style="font-family: monospace; font-size: 13px;"></textarea>
                     </div>
+                    <div class="cot-item-editor-grid">
+                        <div class="form-group"><label>条目状态</label><select id="cot-item-status" required><option value="">请选择</option><option value="enabled">启用</option><option value="disabled">停用</option></select></div>
+                        <div class="form-group"><label>保护状态</label><select id="cot-item-lock" required><option value="">请选择</option><option value="editable">允许编辑删除</option><option value="locked">锁定防误改</option></select></div>
+                        <div class="form-group"><label>条目用途</label><select id="cot-item-type" required><option value="">请选择</option><option value="thinking_rule">思考规则</option><option value="behavior_check">角色行为检查</option><option value="format_rule">回复格式约束</option><option value="system">System 指令</option><option value="developer">Developer 指令</option><option value="trigger">User 触发词</option><option value="assistant_prefill">Assistant 真实预填</option><option value="simulated_prefill">模拟预填指令</option><option value="thinking_start">思考开始协议</option><option value="thinking_end">思考结束协议</option><option value="self_check">回复前自检</option><option value="custom">完全自定义消息</option></select></div>
+                        <div class="form-group"><label>发送身份</label><select id="cot-item-role" required><option value="">请选择</option><option value="inherit">跟随条目用途</option><option value="system">System</option><option value="developer">Developer</option><option value="user">User</option><option value="assistant">Assistant</option></select></div>
+                        <div class="form-group"><label>发送位置</label><select id="cot-item-position" required><option value="">请选择</option><option value="sequence">按条目顺序</option><option value="before_system">主提示之前</option><option value="after_system">主提示之后</option><option value="before_history">聊天记录之前</option><option value="after_history">聊天记录之后</option><option value="before_trigger">触发词之前</option><option value="after_trigger">触发词之后</option><option value="before_prefill">预填之前</option><option value="after_prefill">预填之后</option></select></div>
+                        <div class="form-group"><label>原生思考关系</label><select id="cot-item-native-relation" required><option value="">请选择</option><option value="always">始终发送</option><option value="native_on">仅原生思考开启</option><option value="native_off">仅原生思考关闭</option></select></div>
+                        <div class="form-group"><label>预填关系</label><select id="cot-item-prefill-effect" required><option value="">请选择</option><option value="none">不影响</option><option value="enable_real">启用真实预填</option><option value="enable_simulated">启用模拟预填</option><option value="disable_real">关闭真实预填</option><option value="disable_simulated">关闭模拟预填</option></select></div>
+                        <div class="form-group"><label>不兼容处理</label><select id="cot-item-incompatible" required><option value="">请选择</option><option value="skip">跳过条目</option><option value="system">转为 System</option><option value="user">转为 User</option><option value="simulate">转为模拟指令</option><option value="fallback">切换节点</option><option value="ask">询问</option><option value="error">直接报错</option></select></div>
+                        <div class="form-group"><label>输出目标</label><select id="cot-item-output" required><option value="">请选择</option><option value="internal">仅内部指导</option><option value="thinking">思考区域</option><option value="answer">最终回复</option><option value="xml">指定 XML 标签</option><option value="none">不限制</option></select></div>
+                    </div>
+                    <fieldset class="cot-item-scope-fieldset"><legend>适用场景（至少选择一项）</legend><div class="cot-check-grid">
+                        <label><input type="checkbox" name="cot-item-scope" value="chat"> 在线聊天</label><label><input type="checkbox" name="cot-item-scope" value="group"> 群聊</label><label><input type="checkbox" name="cot-item-scope" value="offline"> 线下</label><label><input type="checkbox" name="cot-item-scope" value="call"> 通话</label><label><input type="checkbox" name="cot-item-scope" value="background"> 后台</label><label><input type="checkbox" name="cot-item-scope" value="content"> 内容生成</label>
+                    </div></fieldset>
+                    <fieldset class="cot-item-scope-fieldset"><legend>适用 API 节点（不选表示未限制）</legend><div id="cot-item-node-list" class="cot-check-grid"></div></fieldset>
+                    <div class="form-group"><label>触发条件</label><select id="cot-item-condition" required><option value="">请选择</option><option value="always">每次调用</option><option value="has_image">消息包含图片</option><option value="has_quote">消息包含引用</option><option value="long_text">用户发送长文本</option><option value="tool_call">存在工具调用</option><option value="custom">自定义条件</option></select></div>
+                    <div class="form-group"><label>自定义条件/模型匹配</label><input id="cot-item-condition-value" placeholder="可填写模型名称、长度或表达式"></div>
+                    <div id="cot-item-legacy-notice" class="cot-editor-notice" hidden>这是旧条目。未补充的新字段会继续沿用旧行为；只有保存后才应用你的选择。</div>
                     <div style="display: flex; gap: 10px; margin-top: 20px;">
                         <button type="submit" class="btn btn-primary" style="flex: 1;">保存</button>
                         <button type="button" id="cot-item-cancel-btn" class="btn btn-neutral"

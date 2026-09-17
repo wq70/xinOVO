@@ -41,7 +41,7 @@ function parseJournalResponse(rawContent) {
 
 async function requestJournalSummary(apiConfig, summaryPrompt) {
     let { url, key, model, provider } = apiConfig || {};
-    if (!url || !key || !model) {
+    if (typeof isApiConfigReady === 'function' ? !isApiConfigReady(apiConfig) : (!url || !key || !model)) {
         throw new Error('API设置不完整。');
     }
 
@@ -459,6 +459,7 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
         } else {
             apiConfig = db.apiSettings;
         }
+        apiConfig = typeof getApiConfigForFeature === 'function' ? getApiConfigForFeature('journal', apiConfig) : apiConfig;
         
         const rawContent = await requestJournalSummary(apiConfig, summaryPrompt);
         const journalData = parseJournalResponse(rawContent);

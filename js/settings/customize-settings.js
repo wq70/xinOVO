@@ -16,35 +16,52 @@ function setupCustomizeApp() {
     customizeForm.addEventListener('click', async (e) => {
         const target = e.target;
 
-        const header = target.closest('.collapsible-header');
-        if (header) {
-            const section = header.closest('.collapsible-section');
-            if (section) {
-                section.classList.toggle('open');
-                return; 
+        // 分段标签页切换
+        const tabBtn = target.closest('.cust-tab-btn');
+        if (tabBtn) {
+            const tabId = tabBtn.dataset.tab;
+            const container = customizeForm.querySelector('.cust-screen-container');
+            if (container) {
+                container.querySelectorAll('.cust-tab-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.tab === tabId);
+                });
+                container.querySelectorAll('.cust-tab-pane').forEach(pane => {
+                    pane.classList.toggle('active', pane.id === `cust-pane-${tabId}`);
+                });
             }
+            return;
         }
 
-        if (target.matches('.reset-icon-btn')) {
-            const iconId = target.dataset.id;
+        if (target.matches('.reset-icon-btn') || target.closest('.reset-icon-btn')) {
+            const btn = target.matches('.reset-icon-btn') ? target : target.closest('.reset-icon-btn');
+            const iconId = btn.dataset.id;
             if (db.customIcons) {
                 delete db.customIcons[iconId];
             }
             await saveCustomizeSettings();
-            renderCustomizeForm();
+            const previewImg = document.getElementById(`icon-preview-${iconId}`);
+            if (previewImg && defaultIcons[iconId]) {
+                previewImg.src = defaultIcons[iconId].url;
+            }
+            const urlInput = document.querySelector(`input[data-icon-id="${iconId}"][type="url"]`);
+            if (urlInput) urlInput.value = '';
             setupHomeScreen();
             showToast('图标已重置');
+            return;
         }
 
-        if (target.matches('.reset-name-btn')) {
-            const nameId = target.dataset.nameResetId;
+        if (target.matches('.reset-name-btn') || target.closest('.reset-name-btn')) {
+            const btn = target.matches('.reset-name-btn') ? target : target.closest('.reset-name-btn');
+            const nameId = btn.dataset.nameResetId;
             if (db.customAppNames) {
                 delete db.customAppNames[nameId];
             }
             await saveCustomizeSettings();
-            renderCustomizeForm();
+            const nameInput = document.querySelector(`input[data-name-id="${nameId}"]`);
+            if (nameInput) nameInput.value = '';
             setupHomeScreen();
             showToast('名称已重置');
+            return;
         }
 
         if (target.matches('#reset-all-names-btn')) {
@@ -675,7 +692,7 @@ function renderCustomizeForm() {
     customizeForm.innerHTML = ''; 
     
     const container = document.createElement('div');
-    container.className = 'kkt-settings-container';
+    container.className = 'cust-screen-container';
     
     const iconOrder = [
         'chat-list-screen', 'api-settings-screen', 'wallpaper-screen',
@@ -683,474 +700,298 @@ function renderCustomizeForm() {
         'day-mode-btn', 'night-mode-btn', 'forum-screen', 'music-screen', 'diary-screen', 'piggy-bank-screen', 'pomodoro-screen', 'storage-analysis-screen', 'appearance-settings-screen', 'theater-screen', 'biekan-app', 'xiaowu-app', 'magic-room-screen'
     ];
 
-    let iconsContentHTML = '';
+    // 1. 顶部纯白分段控制器 Segmented Tab Bar
+    const navTabsHTML = `
+    <div class="cust-tab-wrapper">
+        <div class="cust-segmented-bar">
+            <button type="button" class="cust-tab-btn active" data-tab="apps">应用外观</button>
+            <button type="button" class="cust-tab-btn" data-tab="desktop">桌面方案</button>
+            <button type="button" class="cust-tab-btn" data-tab="media">字体声音</button>
+            <button type="button" class="cust-tab-btn" data-tab="system">系统美化</button>
+        </div>
+    </div>
+    `;
+
+    // 2. 标签页 1：应用外观 (图标与名称一体化设计)
+    let appItemsHTML = '';
     iconOrder.forEach(id => {
         const { name, url } = defaultIcons[id];
         const currentIcon = (db.customIcons && db.customIcons[id]) || url;
-        iconsContentHTML += `
-        <div class="kkt-item">
-            <div class="kkt-item-label">
-                <img src="${currentIcon}" alt="${name}" class="kkt-small-avatar" id="icon-preview-${id}" style="width: 40px; height: 40px; border-radius: 10px; margin-right: 10px; object-fit: cover;">
-                <span>${name || '模式切换'}</span>
-            </div>
-            <div class="kkt-item-control" style="gap: 8px;">
-                <input type="url" placeholder="URL" value="${(db.customIcons && db.customIcons[id]) || ''}" data-icon-id="${id}" style="text-align:right; border:none; background:transparent; width: 100px; font-size: 13px; color: #888;">
-                <input type="file" id="upload-icon-${id}" data-icon-id="${id}" accept="image/*" style="display:none;" class="icon-upload-input">
-                <label for="upload-icon-${id}" class="btn btn-small btn-neutral" style="padding: 4px 8px; font-size: 12px; margin: 0; cursor: pointer;">📷</label>
-                <button type="button" class="reset-icon-btn btn btn-small" data-id="${id}" style="padding: 4px 8px; font-size: 12px; margin: 0; background-color: #f0f0f0; color: #666; border:none;">↺</button>
-            </div>
-        </div>`;
-    });
-
-    const iconsSectionHTML = `
-    <div class="kkt-group collapsible-section" style="background-color: #fff; border: none; margin-bottom: 15px;">
-        <div class="kkt-item collapsible-header" style="background-color: #fff; border-bottom: 1px solid #f5f5f5; cursor: pointer; padding: 15px;">
-            <div class="kkt-item-label" style="font-weight:bold; color:#333; font-size: 15px;">应用图标自定义</div>
-            <span class="collapsible-arrow">▼</span>
-        </div>
-        <div class="collapsible-content">
-            ${iconsContentHTML}
-            <div style="background:#f9f9f9; padding:10px; border-radius:8px; margin:15px 15px 15px 15px; border: 1px solid #f0f0f0;">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-                    <label for="icon-preset-select" style="width:auto;color:#666;font-size:13px;">图标预设库</label>
-                    <select id="icon-preset-select" style="flex:1;padding:6px;border-radius:6px;border:1px solid #ddd;font-size:13px; background: transparent;"><option value="">— 选择 —</option></select>
-                </div>
-                <div style="display:flex;gap:8px;justify-content: flex-end;">
-                    <button type="button" id="icon-apply-preset-btn" class="btn btn-small btn-primary" style="padding:4px 8px;">应用</button>
-                    <button type="button" id="icon-save-preset-btn" class="btn btn-small" style="padding:4px 8px;">保存</button>
-                    <button type="button" id="icon-manage-presets-btn" class="btn btn-small" style="padding:4px 8px;">管理</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    `;
-
-    let namesContentHTML = '';
-    iconOrder.forEach(id => {
-        const { name } = defaultIcons[id];
         const currentName = (db.customAppNames && db.customAppNames[id]) || '';
-        namesContentHTML += `
-        <div class="kkt-item">
-            <div class="kkt-item-label">
-                <span style="font-size:14px;">${name}</span>
+        const iconUrlVal = (db.customIcons && db.customIcons[id]) || '';
+
+        appItemsHTML += `
+        <div class="cust-app-row">
+            <div class="cust-app-avatar-wrap">
+                <img src="${currentIcon}" alt="${name}" id="icon-preview-${id}">
+                <label for="upload-icon-${id}" class="cust-app-avatar-badge" title="上传图标">
+                    <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                </label>
+                <input type="file" id="upload-icon-${id}" data-icon-id="${id}" accept="image/*" style="display:none;" class="icon-upload-input">
             </div>
-            <div class="kkt-item-control" style="gap: 8px;">
-                <input type="text" placeholder="${name}" value="${currentName}" data-name-id="${id}" style="text-align:right; border:none; background:transparent; width: 120px; font-size: 13px; color: #888;">
-                <button type="button" class="reset-name-btn btn btn-small" data-name-reset-id="${id}" style="padding: 4px 8px; font-size: 12px; margin: 0; background-color: #f0f0f0; color: #666; border:none;">↺</button>
+            <div class="cust-app-fields">
+                <input type="text" class="cust-app-name-input" placeholder="${name}" value="${currentName}" data-name-id="${id}">
+                <input type="url" class="cust-app-url-input" placeholder="图标图片URL (可选)" value="${iconUrlVal}" data-icon-id="${id}">
+            </div>
+            <div class="cust-app-actions">
+                <button type="button" class="reset-icon-btn cust-mini-btn" data-id="${id}" title="重置图标">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                </button>
+                <button type="button" class="reset-name-btn cust-mini-btn" data-name-reset-id="${id}" title="重置名称">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
+                </button>
             </div>
         </div>`;
     });
 
-    const namesSectionHTML = `
-    <div class="kkt-group collapsible-section" style="background-color: #fff; border: none; margin-bottom: 15px;">
-        <div class="kkt-item collapsible-header" style="background-color: #fff; border-bottom: 1px solid #f5f5f5; cursor: pointer; padding: 15px;">
-            <div class="kkt-item-label" style="font-weight:bold; color:#333; font-size: 15px;">应用名称自定义</div>
-            <span class="collapsible-arrow">▼</span>
-        </div>
-        <div class="collapsible-content">
-            ${namesContentHTML}
-            <div style="background:#f9f9f9; padding:10px; border-radius:8px; margin:15px 15px 15px 15px; border: 1px solid #f0f0f0;">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-                    <label for="name-preset-select" style="width:auto;color:#666;font-size:13px;">名称预设库</label>
-                    <select id="name-preset-select" style="flex:1;padding:6px;border-radius:6px;border:1px solid #ddd;font-size:13px; background: transparent;"><option value="">— 选择 —</option></select>
+    const paneAppsHTML = `
+    <div class="cust-tab-pane active" id="cust-pane-apps">
+        <div class="cust-card">
+            <div class="cust-card-header">
+                <div>
+                    <h3 class="cust-card-title">应用外观与名称</h3>
+                    <p class="cust-card-subtitle">直接修改每个应用的显示名称、自定义图标链接或上传本地图片。</p>
                 </div>
-                <div style="display:flex;gap:8px;justify-content: flex-end;">
-                    <button type="button" id="name-apply-preset-btn" class="btn btn-small btn-primary" style="padding:4px 8px;">应用</button>
-                    <button type="button" id="name-save-preset-btn" class="btn btn-small" style="padding:4px 8px;">保存</button>
-                    <button type="button" id="name-manage-presets-btn" class="btn btn-small" style="padding:4px 8px;">管理</button>
+                <button type="button" id="reset-all-names-btn" class="cust-btn cust-btn-danger" style="height:30px; padding:0 10px; font-size:12px;">重置全称</button>
+            </div>
+
+            <div class="cust-preset-bar">
+                <div class="cust-preset-select-row">
+                    <label for="icon-preset-select">图标预设</label>
+                    <select id="icon-preset-select"><option value="">— 选择图标预设 —</option></select>
+                </div>
+                <div class="cust-btn-group">
+                    <button type="button" id="icon-apply-preset-btn" class="cust-btn cust-btn-primary" style="flex:1;">应用预设</button>
+                    <button type="button" id="icon-save-preset-btn" class="cust-btn" style="flex:1;">保存方案</button>
+                    <button type="button" id="icon-manage-presets-btn" class="cust-btn" style="flex:1;">管理库</button>
                 </div>
             </div>
-            <div style="padding: 15px; display: flex; justify-content: flex-end;">
-                <button type="button" id="reset-all-names-btn" class="btn btn-neutral btn-small" style="width: auto;">全部重置</button>
+
+            <div class="cust-preset-bar">
+                <div class="cust-preset-select-row">
+                    <label for="name-preset-select">名称预设</label>
+                    <select id="name-preset-select"><option value="">— 选择名称预设 —</option></select>
+                </div>
+                <div class="cust-btn-group">
+                    <button type="button" id="name-apply-preset-btn" class="cust-btn cust-btn-primary" style="flex:1;">应用预设</button>
+                    <button type="button" id="name-save-preset-btn" class="cust-btn" style="flex:1;">保存方案</button>
+                    <button type="button" id="name-manage-presets-btn" class="cust-btn" style="flex:1;">管理库</button>
+                </div>
             </div>
-        </div>
-    </div>
-    `;
-    
-    const widgetSectionHTML = `
-    <div class="kkt-group collapsible-section" style="background-color: #fff; border: none; margin-bottom: 15px;">
-        <div class="kkt-item collapsible-header" style="background-color: #fff; border-bottom: 1px solid #f5f5f5; cursor: pointer; padding: 15px;">
-            <div class="kkt-item-label" style="font-weight:bold; color:#333; font-size: 15px;">主页小部件设置</div>
-            <span class="collapsible-arrow">▼</span>
-        </div>
-        <div class="collapsible-content">
-            <div class="kkt-item" style="display:block; padding: 15px;">
-                <div style="background:#f9f9f9; padding:10px; border-radius:8px; margin-bottom:12px; border: 1px solid #f0f0f0;">
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-                        <label for="widget-preset-select" style="width:auto;color:#666;font-size:13px;">预设库</label>
-                        <select id="widget-preset-select" style="flex:1;padding:6px;border-radius:6px;border:1px solid #ddd;font-size:13px; background: transparent;"><option value="">— 选择预设 —</option></select>
-                    </div>
-                    <div style="display:flex;gap:8px;justify-content: flex-end;">
-                        <button type="button" id="widget-apply-preset" class="btn btn-small btn-primary" style="padding:4px 8px;">应用</button>
-                        <button type="button" id="widget-save-preset" class="btn btn-small" style="padding:4px 8px;">保存</button>
-                        <button type="button" id="widget-manage-presets" class="btn btn-small" style="padding:4px 8px;">管理</button>
-                    </div>
-                </div>
-                <p style="font-size: 13px; color: #888; margin-bottom: 10px; line-height: 1.5;">主屏幕上的小组件内容可以直接点击编辑，失焦后自动保存。<br>中央头像则是在主屏幕点击后弹窗更换。</p>
-                <div style="display: flex; justify-content: flex-end;">
-                     <button type="button" id="reset-widget-btn" class="btn btn-neutral btn-small" style="width: auto;">恢复默认</button>
-                </div>
+
+            <div class="cust-app-grid">
+                ${appItemsHTML}
             </div>
         </div>
     </div>
     `;
 
-    const widgetWallpaperSectionHTML = `
-    <div class="kkt-group collapsible-section" style="background-color: #fff; border: none; margin-bottom: 15px;">
-        <div class="kkt-item collapsible-header" style="background-color: #fff; border-bottom: 1px solid #f5f5f5; cursor: pointer; padding: 15px;">
-            <div class="kkt-item-label" style="font-weight:bold; color:#333; font-size: 15px;">主屏幕预设方案</div>
-            <span class="collapsible-arrow">▼</span>
-        </div>
-        <div class="collapsible-content">
-            <div class="kkt-item" style="display:block; padding: 15px;">
-                <p style="font-size: 13px; color: #888; margin-bottom: 12px; line-height: 1.5;">将当前主屏幕的「所有小组件 + 壁纸 + 应用图标 + 偷看图标」保存为方案，可导出分享或导入他人方案；一键恢复默认。与下方「应用图标自定义」中的图标预设库相互独立。</p>
-                <div style="background:#f9f9f9; padding:10px; border-radius:8px; margin-bottom:12px; border: 1px solid #f0f0f0;">
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-                        <label for="widget-wallpaper-preset-select" style="width:auto;color:#666;font-size:13px;">方案预设库</label>
-                        <select id="widget-wallpaper-preset-select" style="flex:1;padding:6px;border-radius:6px;border:1px solid #ddd;font-size:13px; background: transparent;"><option value="">— 选择方案 —</option></select>
-                    </div>
-                    <div style="display:flex;gap:8px;justify-content: flex-end; flex-wrap: wrap;">
-                        <button type="button" id="widget-wallpaper-apply-preset" class="btn btn-small btn-primary" style="padding:4px 8px;">应用</button>
-                        <button type="button" id="widget-wallpaper-save-preset" class="btn btn-small" style="padding:4px 8px;">保存为方案</button>
-                        <button type="button" id="widget-wallpaper-manage-presets" class="btn btn-small" style="padding:4px 8px;">管理</button>
-                    </div>
+    // 3. 标签页 2：桌面方案与小部件
+    const paneDesktopHTML = `
+    <div class="cust-tab-pane" id="cust-pane-desktop">
+        <div class="cust-card">
+            <div class="cust-card-header">
+                <div>
+                    <h3 class="cust-card-title">主屏幕完整方案</h3>
+                    <p class="cust-card-subtitle">将当前主屏全部小组件、壁纸与图标组合保存为完整预设方案，支持导出分享。</p>
                 </div>
-                <div style="display:flex;gap:8px;justify-content: flex-end; flex-wrap: wrap; margin-bottom: 12px;">
-                    <button type="button" id="widget-wallpaper-export-btn" class="btn btn-small btn-neutral" style="padding:4px 8px;">导出方案</button>
-                    <button type="button" id="widget-wallpaper-import-btn" class="btn btn-small btn-neutral" style="padding:4px 8px;">导入方案</button>
-                </div>
-                <div style="display: flex; justify-content: flex-end;">
-                    <button type="button" id="widget-wallpaper-reset-btn" class="btn btn-neutral btn-small" style="width: auto;">恢复默认（主屏幕预设）</button>
-                </div>
-                <input type="file" id="widget-wallpaper-import-file" accept=".json,.ee" style="display:none;">
             </div>
+            <div class="cust-preset-bar">
+                <div class="cust-preset-select-row">
+                    <label for="widget-wallpaper-preset-select">方案预设</label>
+                    <select id="widget-wallpaper-preset-select"><option value="">— 选择方案 —</option></select>
+                </div>
+                <div class="cust-btn-group">
+                    <button type="button" id="widget-wallpaper-apply-preset" class="cust-btn cust-btn-primary" style="flex:1;">应用方案</button>
+                    <button type="button" id="widget-wallpaper-save-preset" class="cust-btn" style="flex:1;">保存当前</button>
+                    <button type="button" id="widget-wallpaper-manage-presets" class="cust-btn" style="flex:1;">方案管理</button>
+                </div>
+            </div>
+            <div class="cust-btn-group">
+                <button type="button" id="widget-wallpaper-export-btn" class="cust-btn" style="flex:1;">导出方案文件</button>
+                <button type="button" id="widget-wallpaper-import-btn" class="cust-btn" style="flex:1;">导入方案文件</button>
+            </div>
+            <button type="button" id="widget-wallpaper-reset-btn" class="cust-btn cust-btn-danger">恢复默认（主屏幕预设）</button>
+            <input type="file" id="widget-wallpaper-import-file" accept=".json,.ee" style="display:none;">
+        </div>
+
+        <div class="cust-card">
+            <div class="cust-card-header">
+                <div>
+                    <h3 class="cust-card-title">主页小部件设置</h3>
+                    <p class="cust-card-subtitle">主屏幕小部件内容可直接点击编辑。在此可单独管理小部件预设。</p>
+                </div>
+            </div>
+            <div class="cust-preset-bar">
+                <div class="cust-preset-select-row">
+                    <label for="widget-preset-select">部件预设</label>
+                    <select id="widget-preset-select"><option value="">— 选择部件预设 —</option></select>
+                </div>
+                <div class="cust-btn-group">
+                    <button type="button" id="widget-apply-preset" class="cust-btn cust-btn-primary" style="flex:1;">应用</button>
+                    <button type="button" id="widget-save-preset" class="cust-btn" style="flex:1;">保存</button>
+                    <button type="button" id="widget-manage-presets" class="cust-btn" style="flex:1;">管理</button>
+                </div>
+            </div>
+            <button type="button" id="reset-widget-btn" class="cust-btn cust-btn-danger">恢复小部件默认内容</button>
         </div>
     </div>
     `;
 
-    const globalCssSectionHTML = `
-    <div class="kkt-group collapsible-section" style="background-color: #fff; border: none; margin-bottom: 15px;">
-        <div class="kkt-item collapsible-header" style="background-color: #fff; border-bottom: 1px solid #f5f5f5; cursor: pointer; padding: 15px;">
-            <div class="kkt-item-label" style="font-weight:bold; color:#333; font-size: 15px;">全局CSS美化</div>
-            <span class="collapsible-arrow">▼</span>
-        </div>
-        <div class="collapsible-content">
-            <div class="kkt-item" style="display:block; padding: 15px;">
-                <div class="form-group" style="margin-bottom: 15px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <label for="global-beautification-css" style="font-weight: bold; font-size: 14px; color: var(--primary-color); margin-bottom: 0;">CSS代码</label>
-                        <div style="display: flex; gap: 8px;">
-                            <button type="button" id="global-css-import-doc-btn" class="btn btn-small" style="width:auto;">导入文档</button>
-                            <button type="button" id="apply-global-css-now-btn" class="btn btn-primary btn-small" style="width:auto;">立即应用</button>
-                            <button type="button" id="reset-global-css-btn" class="btn btn-small" style="width:auto;">重置</button>
-                        </div>
-                    </div>
-                    <input type="file" id="global-css-import-file" accept=".txt,.docx" style="display:none;">
-                    <textarea id="global-beautification-css" class="form-group" rows="8" placeholder="在此输入CSS代码..." style="width:100%; border:1px solid #eee; border-radius:8px; padding:10px;"></textarea>
+    // 4. 标签页 3：字体与声音
+    const paneMediaHTML = `
+    <div class="cust-tab-pane" id="cust-pane-media">
+        <div class="cust-card">
+            <div class="cust-card-header">
+                <div>
+                    <h3 class="cust-card-title">全局字体设置</h3>
+                    <p class="cust-card-subtitle">调整全局字体大小或加载个性化字体文件。</p>
                 </div>
-                
-                <div style="background:#f9f9f9; padding:10px; border-radius:8px; margin-bottom:15px; border: 1px solid #f0f0f0;">
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-                        <label for="global-css-preset-select" style="width:auto;color:#666;font-size:13px;">预设库</label>
-                        <select id="global-css-preset-select" style="flex:1;padding:6px;border-radius:6px;border:1px solid #ddd;font-size:13px; background: transparent;"><option value="">-- 选择 --</option></select>
-                    </div>
-                    <div style="display:flex;gap:8px;justify-content: flex-end;">
-                        <button type="button" id="global-css-apply-btn" class="btn btn-small btn-primary" style="padding:4px 8px;">应用</button>
-                        <button type="button" id="global-css-save-btn" class="btn btn-small" style="padding:4px 8px;">保存</button>
-                        <button type="button" id="global-css-manage-btn" class="btn btn-small" style="padding:4px 8px;">管理</button>
-                    </div>
+            </div>
+
+            <div class="cust-field-item">
+                <div class="cust-field-item-row">
+                    <span class="cust-field-label">字体大小缩放</span>
+                    <span id="font-size-value" style="font-weight:600; color:#0f172a;">${(db.fontSizeScale || 1.0).toFixed(1)}x</span>
                 </div>
+                <input type="range" id="font-size-slider" min="0.8" max="1.5" step="0.1" value="${db.fontSizeScale || 1.0}" style="width:100%; accent-color:#0f172a; margin:6px 0;">
+            </div>
 
-                <div class="css-template-module" style="border-top: 1px solid #eee; padding-top: 15px;">
-                    <h5 style="font-size: 14px; color: var(--secondary-color); margin-bottom: 15px; margin-top: 0;">拓展美化代码库</h5>
-                    <div class="css-template-list" style="display: flex; flex-direction: column; gap: 10px;">
+            <div class="cust-field-item">
+                <span class="cust-field-label">网络字体文件 URL</span>
+                <input type="url" id="customize-font-url" class="cust-input-text" placeholder="https://example.com/font.woff2" value="${db.fontUrl && !db.fontUrl.startsWith('data:') ? db.fontUrl : ''}">
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <input type="file" id="local-font-upload" accept=".woff2,.woff,.ttf,.otf,.eot,.svg,.ttc" style="display:none;">
+                    <label for="local-font-upload" class="cust-btn" style="flex:1; cursor:pointer;">本地字体上传</label>
+                    <button type="button" id="apply-font-btn" class="cust-btn cust-btn-primary" style="flex:1;">应用字体</button>
+                    <button type="button" id="restore-font-btn" class="cust-btn" style="flex:1;">恢复默认</button>
+                </div>
+                <p id="local-font-name" style="font-size:12px; color:#0f172a; margin:2px 0 0; display:${db.fontUrl && db.fontUrl.startsWith('data:') ? 'block' : 'none'};">${db.localFontName ? '已加载本地字体：' + db.localFontName : ''}</p>
+                <span class="cust-field-hint">支持 woff2, woff, ttf, otf, eot 等格式，本地上传限制 5MB 内。</span>
+            </div>
 
-                        <div class="css-template-card" style="background: #fff; border: 1px solid #eee; border-radius: 10px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                <h6 style="margin: 0; font-size: 1em; color: #333;">隐藏聊天顶栏线</h6>
-                                <button type="button" class="btn btn-secondary btn-small copy-css-btn">复制</button>
-                            </div>
-                            <pre style="background: #f5f5f5; padding: 10px; border-radius: 8px; white-space: pre-wrap; word-wrap: break-word; font-size: 12px; max-height: 150px; overflow-y: auto;"><code>/* --- 3. 进入聊天界面-顶部栏的底部那条线的隐藏 --- */
-#chat-room-screen .app-header {
-border-bottom: none !important;
-}</code></pre>
-                        </div>
-                    
-                        <div class="css-template-card" style="background: #fff; border: 1px solid #eee; border-radius: 10px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                <h6 style="margin: 0; font-size: 1em; color: #333;">隐藏头像</h6>
-                                <button type="button" class="btn btn-secondary btn-small copy-css-btn">复制</button>
-                            </div>
-                            <pre style="background: #f5f5f5; padding: 10px; border-radius: 8px; white-space: pre-wrap; word-wrap: break-word; font-size: 12px; max-height: 150px; overflow-y: auto;"><code>/* --- 隐藏聊天界面的所有头像和时间戳 --- */
-.message-info {
-display: none !important;
-}
-
-/* --- 修正语音和翻译气泡的边距 --- */
-.voice-transcript, .translation-text {
-margin-left: 8px !important;
-margin-right: 8px !important;
-}
-
-/* 确保发送方的语音/翻译气泡仍然正确对齐 */
-.message-wrapper.sent .voice-transcript,
-.message-wrapper.sent .translation-text {
-align-self: flex-end;
-margin-left: auto !important;
-}</code></pre>
-                        </div>
-
-                        <div class="css-template-card" style="background: #fff; border: 1px solid #eee; border-radius: 10px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                <div>
-                                    <h6 style="margin: 0; font-size: 1em; color: #333;">iOS 灵动岛/刘海屏防遮挡适配补丁</h6>
-                                    <span style="font-size: 12px; color: #999;">作者：1900</span>
-                                </div>
-                                <button type="button" class="btn btn-secondary btn-small copy-css-btn">复制</button>
-                            </div>
-                            <pre style="background: #f5f5f5; padding: 10px; border-radius: 8px; white-space: pre-wrap; word-wrap: break-word; font-size: 12px; max-height: 150px; overflow-y: auto;"><code>/* --- iOS 灵动岛/刘海屏防遮挡适配补丁 --- */
-
-/* 1. 修复所有页面通用顶栏 (如聊天、列表、功能页) */
-.app-header {
-    padding-top: calc(15px + env(safe-area-inset-top)) !important;
-    height: auto !important;
-}
-
-/* 2. 修复主屏幕 (锁屏/桌面) 小组件遮挡 */
-#home-screen {
-    padding-top: calc(45px + env(safe-area-inset-top)) !important;
-}
-
-/* 3. 修复右侧滑出的设置菜单顶栏遮挡 */
-.settings-sidebar .header {
-    padding-top: calc(15px + env(safe-area-inset-top)) !important;
-}
-
-/* 4. (可选) 底部小横条防遮挡输入框 */
-.message-input-area,
-#multi-select-bar,
-#world-book-multi-select-bar {
-    padding-bottom: calc(10px + env(safe-area-inset-bottom)) !important;
-}</code></pre>
-                        </div>
-
-                        <div class="css-template-card" style="background: #fff; border: 1px solid #eee; border-radius: 10px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                <div>
-                                    <h6 style="margin: 0; font-size: 1em; color: #333;">核心容器尺寸调整：全宽幅矮窗</h6>
-                                    <span style="font-size: 12px; color: #999;">作者：萤火</span>
-                                </div>
-                                <button type="button" class="btn btn-secondary btn-small copy-css-btn">复制</button>
-                            </div>
-                            <pre style="background: #f5f5f5; padding: 10px; border-radius: 8px; white-space: pre-wrap; word-wrap: break-word; font-size: 12px; max-height: 150px; overflow-y: auto;"><code>/* =========================================================
-   核心容器尺寸调整：全宽幅矮窗 (左右贴边·垂直居中)
-   ========================================================= */
-
-/* 1. 主容器：全宽 + 垂直百分比缩放 */
-#chat-room-screen {
-    position: fixed !important;
-    top: 50% !important;
-    left: 0 !important;
-    right: 0 !important;
-    transform: translateY(-50%) !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: 70vh !important;
-    max-height: 100vh !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-    z-index: 59 !important;
-    box-shadow: none !important;
-    border: none !important;
-    border-radius: 0 !important;
-}
-
-/* 2. 底部输入栏：跟随容器宽度 */
-.bottom-input-area,
-.chat-input-wrapper {
-    position: absolute !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    width: 100% !important;
-    margin: 0 !important;
-    transform: none !important;
-    z-index: 100 !important;
-}
-
-/* 3. 顶部栏：跟随容器宽度 */
-.app-header,
-#chat-room-header-default {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: 100% !important;
-    z-index: 100 !important;
-    border-radius: 0 !important;
-}
-
-/* 4. 内容区域：保留原有背景 */
-.content {
-    position: relative !important;
-    width: auto !important;
-    height: auto !important;
-    min-height: 100% !important;
-    padding-top: 60px !important;
-    padding-bottom: 35px !important;
-    box-sizing: border-box !important;
-    overflow-y: auto !important;
-    background: none !important;
-    background-color: transparent !important;
-}
-
-/* 5. 消息区域 */
-.message-area {
-    width: 100% !important;
-    box-sizing: border-box !important;
-    min-height: 100% !important;
-}</code></pre>
-                        </div>
-
-                    </div>
+            <div class="cust-preset-bar">
+                <div class="cust-preset-select-row">
+                    <label for="font-preset-select">字体预设</label>
+                    <select id="font-preset-select"><option value="">— 选择字体预设 —</option></select>
+                </div>
+                <div class="cust-btn-group">
+                    <button type="button" id="font-apply-preset-btn" class="cust-btn cust-btn-primary" style="flex:1;">应用预设</button>
+                    <button type="button" id="font-save-preset-btn" class="cust-btn" style="flex:1;">保存预设</button>
+                    <button type="button" id="font-manage-presets-btn" class="cust-btn" style="flex:1;">管理预设</button>
                 </div>
             </div>
         </div>
-    </div>
-    `;
-    
-    const fontsSectionHTML = `
-    <div class="kkt-group collapsible-section" style="background-color: #fff; border: none; margin-bottom: 15px;">
-        <div class="kkt-item collapsible-header" style="background-color: #fff; border-bottom: 1px solid #f5f5f5; cursor: pointer; padding: 15px;">
-            <div class="kkt-item-label" style="font-weight:bold; color:#333; font-size: 15px;">字体设置</div>
-            <span class="collapsible-arrow">▼</span>
-        </div>
-        <div class="collapsible-content">
-            <div class="kkt-item" style="display:block; padding: 15px;">
-                <!-- Font Size Slider -->
-                <div class="form-group" style="margin-bottom: 20px;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                        <label style="font-weight: bold; font-size: 14px; color: var(--primary-color);">全局字体大小</label>
-                        <span id="font-size-value" style="color: var(--primary-color); font-weight: bold;">${(db.fontSizeScale || 1.0).toFixed(1)}x</span>
-                    </div>
-                    <input type="range" id="font-size-slider" min="0.8" max="1.5" step="0.1" value="${db.fontSizeScale || 1.0}" style="width: 100%; accent-color: var(--primary-color);">
-                </div>
 
-                <div class="form-group">
-                    <label for="customize-font-url" style="font-weight: bold; font-size: 14px; color: var(--primary-color);">字体文件 URL</label>
-                    <div style="display: flex; gap: 8px; margin-top: 5px;">
-                        <input type="url" id="customize-font-url" placeholder="例如：https://example.com/font.woff2" value="${db.fontUrl && !db.fontUrl.startsWith('data:') ? db.fontUrl : ''}" style="flex:1; border:1px solid #eee; border-radius:8px; padding:10px;">
-                        <input type="file" id="local-font-upload" accept=".woff2,.woff,.ttf,.otf,.eot,.svg,.ttc" style="display: none;">
-                        <label for="local-font-upload" class="btn btn-secondary btn-small" style="margin: 0; display: flex; align-items: center; cursor: pointer; white-space: nowrap;">📂 本地上传</label>
-                    </div>
-                    <p id="local-font-name" style="font-size: 12px; color: var(--primary-color); margin-top: 5px; display: ${db.fontUrl && db.fontUrl.startsWith('data:') ? 'block' : 'none'};">${db.localFontName ? '已加载本地字体：' + db.localFontName : ''}</p>
-                    <p style="font-size: 12px; color: #999; margin-top: 5px;">支持 woff2, woff, ttf, otf, eot, svg, ttc 格式。设置后将应用到全局。</p>
-                    <p style="font-size: 12px; color: #e67e22; margin-top: 3px;">⚠️ 本地上传限制 5MB，过大的字体文件可能导致应用闪退，建议使用较小的字体文件或使用 URL 链接。</p>
-                </div>
-
-                <!-- 字体预设管理区域 -->
-                <div style="background:#f9f9f9; padding:10px; border-radius:8px; margin-top:15px; margin-bottom:15px; border: 1px solid #f0f0f0;">
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-                        <label for="font-preset-select" style="width:auto;color:#666;font-size:13px;">预设库</label>
-                        <select id="font-preset-select" style="flex:1;padding:6px;border-radius:6px;border:1px solid #ddd;font-size:13px; background: transparent;"><option value="">— 选择 —</option></select>
-                    </div>
-                    <div style="display:flex;gap:8px;justify-content: flex-end;">
-                        <button type="button" id="font-apply-preset-btn" class="btn btn-small btn-primary" style="padding:4px 8px;">应用</button>
-                        <button type="button" id="font-save-preset-btn" class="btn btn-small" style="padding:4px 8px;">保存</button>
-                        <button type="button" id="font-manage-presets-btn" class="btn btn-small" style="padding:4px 8px;">管理</button>
-                    </div>
-                </div>
-
-                <div style="display:flex; gap:10px; justify-content: flex-end; margin-top: 15px;">
-                    <button type="button" id="restore-font-btn" class="btn btn-neutral btn-small">恢复默认</button>
-                    <button type="button" id="apply-font-btn" class="btn btn-primary btn-small">直接应用</button>
+        <div class="cust-card">
+            <div class="cust-card-header">
+                <div>
+                    <h3 class="cust-card-title">提示音与铃声</h3>
+                    <p class="cust-card-subtitle">设置操作反馈音与通话铃声，支持网络链接与本地音频。</p>
                 </div>
             </div>
-        </div>
-    </div>
-    `;
 
-    const soundSectionHTML = `
-    <div class="kkt-group collapsible-section" style="background-color: #fff; border: none; margin-bottom: 15px;">
-        <div class="kkt-item collapsible-header" style="background-color: #fff; border-bottom: 1px solid #f5f5f5; cursor: pointer; padding: 15px;">
-            <div class="kkt-item-label" style="font-weight:bold; color:#333; font-size: 15px;">提示音设置</div>
-            <span class="collapsible-arrow">▼</span>
-        </div>
-        <div class="collapsible-content">
-            <div class="kkt-item" style="display:block; padding: 15px;">
-                <div class="form-group" style="margin-bottom: 15px;">
-                    <label style="font-weight: bold; font-size: 14px; color: var(--primary-color);">开始生成提示音</label>
-                    <div style="display: flex; gap: 8px; margin-top: 5px;">
-                        <input type="url" id="global-send-sound-url" placeholder="音频URL" value="${db.globalSendSound || ''}" style="flex: 1; border: 1px solid #eee; border-radius: 8px; padding: 8px;">
-                        <input type="file" id="global-send-sound-upload" accept="audio/*" style="display: none;">
-                        <label for="global-send-sound-upload" class="btn btn-secondary btn-small" style="margin: 0; display: flex; align-items: center; cursor: pointer;">📂</label>
-                        <button type="button" id="test-send-sound-btn" class="btn btn-primary btn-small" style="margin: 0;">▶</button>
-                        <button type="button" id="reset-send-sound-btn" class="btn btn-danger btn-small" style="margin: 0;">×</button>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label style="font-weight: bold; font-size: 14px; color: var(--primary-color);">收到回复提示音</label>
-                    <div style="display: flex; gap: 8px; margin-top: 5px;">
-                        <input type="url" id="global-receive-sound-url" placeholder="音频URL" value="${db.globalReceiveSound || ''}" style="flex: 1; border: 1px solid #eee; border-radius: 8px; padding: 8px;">
-                        <input type="file" id="global-receive-sound-upload" accept="audio/*" style="display: none;">
-                        <label for="global-receive-sound-upload" class="btn btn-secondary btn-small" style="margin: 0; display: flex; align-items: center; cursor: pointer;">📂</label>
-                        <button type="button" id="test-receive-sound-btn" class="btn btn-primary btn-small" style="margin: 0;">▶</button>
-                        <button type="button" id="reset-receive-sound-btn" class="btn btn-danger btn-small" style="margin: 0;">×</button>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label style="font-weight: bold; font-size: 14px; color: var(--primary-color);">发消息提示音</label>
-                    <div style="display: flex; gap: 8px; margin-top: 5px;">
-                        <input type="url" id="global-message-sent-sound-url" placeholder="音频URL" value="${db.globalMessageSentSound || ''}" style="flex: 1; border: 1px solid #eee; border-radius: 8px; padding: 8px;">
-                        <input type="file" id="global-message-sent-sound-upload" accept="audio/*" style="display: none;">
-                        <label for="global-message-sent-sound-upload" class="btn btn-secondary btn-small" style="margin: 0; display: flex; align-items: center; cursor: pointer;">📂</label>
-                        <button type="button" id="test-message-sent-sound-btn" class="btn btn-primary btn-small" style="margin: 0;">▶</button>
-                        <button type="button" id="reset-message-sent-sound-btn" class="btn btn-danger btn-small" style="margin: 0;">×</button>
-                    </div>
-                    <p style="font-size: 12px; color: #999; margin-top: 5px;">在输入框发送一条消息时播放。不设置则发送时不播放。</p>
-                </div>
-                <div class="form-group">
-                    <label style="font-weight: bold; font-size: 14px; color: var(--primary-color);">来电提示音</label>
-                    <div style="display: flex; gap: 8px; margin-top: 5px;">
-                        <input type="url" id="global-incoming-call-sound-url" placeholder="音频URL" value="${db.globalIncomingCallSound || ''}" style="flex: 1; border: 1px solid #eee; border-radius: 8px; padding: 8px;">
-                        <input type="file" id="global-incoming-call-sound-upload" accept="audio/*" style="display: none;">
-                        <label for="global-incoming-call-sound-upload" class="btn btn-secondary btn-small" style="margin: 0; display: flex; align-items: center; cursor: pointer;">📂</label>
-                        <button type="button" id="test-incoming-call-sound-btn" class="btn btn-primary btn-small" style="margin: 0;">▶</button>
-                        <button type="button" id="reset-incoming-call-sound-btn" class="btn btn-danger btn-small" style="margin: 0;">×</button>
-                    </div>
-                    <p style="font-size: 12px; color: #999; margin-top: 5px;">角色主动发起通话时循环播放，接听或拒绝后停止。不设置则来电时不播放任何声音。</p>
-                </div>
-                
-                <div class="form-group" style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
-                    <label for="multi-msg-sound-switch" style="font-weight: bold; font-size: 14px; color: var(--primary-color); margin-bottom: 0;">多条消息连续提示音</label>
-                    <label class="switch">
-                        <input type="checkbox" id="multi-msg-sound-switch" ${db.multiMsgSoundEnabled ? 'checked' : ''}>
-                        <span class="slider round"></span>
+            <!-- 开始生成提示音 -->
+            <div class="cust-field-item">
+                <span class="cust-field-label">开始生成提示音</span>
+                <div class="cust-sound-row">
+                    <input type="url" id="global-send-sound-url" placeholder="音频链接" value="${db.globalSendSound || ''}">
+                    <input type="file" id="global-send-sound-upload" accept="audio/*" style="display:none;">
+                    <label for="global-send-sound-upload" class="cust-mini-btn" title="本地上传">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
                     </label>
+                    <button type="button" id="test-send-sound-btn" class="cust-mini-btn" title="试听">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    </button>
+                    <button type="button" id="reset-send-sound-btn" class="cust-mini-btn" title="重置">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
                 </div>
-                <p style="font-size: 12px; color: #999; margin-top: 5px;">开启后，AI 连续回复的多条消息（气泡）都会触发提示音。关闭则仅第一条触发。</p>
+            </div>
 
-                <p style="font-size: 12px; color: #999; margin-top: 10px;">支持 URL 或本地上传 (mp3, wav, ogg)。本地文件将转为 Base64 存储 (限 2MB)。</p>
+            <!-- 收到回复提示音 -->
+            <div class="cust-field-item">
+                <span class="cust-field-label">收到回复提示音</span>
+                <div class="cust-sound-row">
+                    <input type="url" id="global-receive-sound-url" placeholder="音频链接" value="${db.globalReceiveSound || ''}">
+                    <input type="file" id="global-receive-sound-upload" accept="audio/*" style="display:none;">
+                    <label for="global-receive-sound-upload" class="cust-mini-btn" title="本地上传">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                    </label>
+                    <button type="button" id="test-receive-sound-btn" class="cust-mini-btn" title="试听">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    </button>
+                    <button type="button" id="reset-receive-sound-btn" class="cust-mini-btn" title="重置">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+            </div>
 
-                <!-- 提示音预设管理区域 -->
-                <div style="background:#f9f9f9; padding:10px; border-radius:8px; margin-top:15px; margin-bottom:15px; border: 1px solid #f0f0f0;">
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-                        <label for="sound-preset-select" style="width:auto;color:#666;font-size:13px;">预设库</label>
-                        <select id="sound-preset-select" style="flex:1;padding:6px;border-radius:6px;border:1px solid #ddd;font-size:13px; background: transparent;"><option value="">— 选择 —</option></select>
-                    </div>
-                    <div style="display:flex;gap:8px;justify-content: flex-end;">
-                        <button type="button" id="sound-apply-preset-btn" class="btn btn-small btn-primary" style="padding:4px 8px;">应用</button>
-                        <button type="button" id="sound-save-preset-btn" class="btn btn-small" style="padding:4px 8px;">保存</button>
-                        <button type="button" id="sound-manage-presets-btn" class="btn btn-small" style="padding:4px 8px;">管理</button>
-                    </div>
+            <!-- 发消息提示音 -->
+            <div class="cust-field-item">
+                <span class="cust-field-label">发消息提示音</span>
+                <div class="cust-sound-row">
+                    <input type="url" id="global-message-sent-sound-url" placeholder="音频链接" value="${db.globalMessageSentSound || ''}">
+                    <input type="file" id="global-message-sent-sound-upload" accept="audio/*" style="display:none;">
+                    <label for="global-message-sent-sound-upload" class="cust-mini-btn" title="本地上传">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                    </label>
+                    <button type="button" id="test-message-sent-sound-btn" class="cust-mini-btn" title="试听">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    </button>
+                    <button type="button" id="reset-message-sent-sound-btn" class="cust-mini-btn" title="重置">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 来电提示音 -->
+            <div class="cust-field-item">
+                <span class="cust-field-label">来电提示音</span>
+                <div class="cust-sound-row">
+                    <input type="url" id="global-incoming-call-sound-url" placeholder="音频链接" value="${db.globalIncomingCallSound || ''}">
+                    <input type="file" id="global-incoming-call-sound-upload" accept="audio/*" style="display:none;">
+                    <label for="global-incoming-call-sound-upload" class="cust-mini-btn" title="本地上传">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                    </label>
+                    <button type="button" id="test-incoming-call-sound-btn" class="cust-mini-btn" title="试听">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    </button>
+                    <button type="button" id="reset-incoming-call-sound-btn" class="cust-mini-btn" title="重置">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="cust-field-item-row" style="padding-top:6px;">
+                <div>
+                    <div class="cust-field-label">多条连续消息提示音</div>
+                    <div class="cust-field-hint">开启后 AI 连续输出多个气泡均播放提示音</div>
+                </div>
+                <label class="kkt-switch">
+                    <input type="checkbox" id="multi-msg-sound-switch" ${db.multiMsgSoundEnabled ? 'checked' : ''}>
+                    <span class="kkt-slider"></span>
+                </label>
+            </div>
+
+            <div class="cust-preset-bar">
+                <div class="cust-preset-select-row">
+                    <label for="sound-preset-select">提示音预设</label>
+                    <select id="sound-preset-select"><option value="">— 选择提示音预设 —</option></select>
+                </div>
+                <div class="cust-btn-group">
+                    <button type="button" id="sound-apply-preset-btn" class="cust-btn cust-btn-primary" style="flex:1;">应用预设</button>
+                    <button type="button" id="sound-save-preset-btn" class="cust-btn" style="flex:1;">保存预设</button>
+                    <button type="button" id="sound-manage-presets-btn" class="cust-btn" style="flex:1;">管理预设</button>
                 </div>
             </div>
         </div>
     </div>
     `;
-    
-    // ---------- 夜间模式设置 ----------
+
+    // 5. 标签页 4：系统与美化代码 (顶栏、夜间模式、CSS代码实验室)
     const nightSettings = db.nightModeSettings || {};
+    const statusBarSettings = db.homeStatusBarSettings || {};
     const DEFAULT_NIGHT_MODE_CSS = `/* 基础颜色变量 */
 body.night-mode-active {
     --bg-color: #121212;
@@ -1208,114 +1049,191 @@ body.night-mode-active .message-input-area textarea {
     color: #e0e0e0 !important;
 }`;
 
-    const nightModeSectionHTML = `
-    <div class="kkt-group collapsible-section" style="background-color: #fff; border: none; margin-bottom: 15px;">
-        <div class="kkt-item collapsible-header" style="background-color: #fff; border-bottom: 1px solid #f5f5f5; cursor: pointer; padding: 15px;">
-            <div class="kkt-item-label" style="font-weight:bold; color:#333; font-size: 15px;">夜间模式</div>
-            <span class="collapsible-arrow">▼</span>
+    const paneSystemHTML = `
+    <div class="cust-tab-pane" id="cust-pane-system">
+        <!-- 顶栏状态栏 -->
+        <div class="cust-card">
+            <div class="cust-card-header">
+                <div>
+                    <h3 class="cust-card-title">顶栏时间与电量</h3>
+                    <p class="cust-card-subtitle">在全应用顶栏显示无遮挡的实时时间与电量。</p>
+                </div>
+                <label class="kkt-switch">
+                    <input type="checkbox" id="home-statusbar-enabled" ${statusBarSettings.enabled ? 'checked' : ''}>
+                    <span class="kkt-slider"></span>
+                </label>
+            </div>
+
+            <div class="cust-statusbar-preview">
+                <span id="statusbar-preview-time" style="font-weight:600;">--:--</span>
+                <span style="display:flex; align-items:center; gap:6px;">
+                    <svg width="18" height="11" viewBox="0 0 24 12" fill="none"><path d="M1 2.5C1 1.95 1.45 1.5 2 1.5H20C20.55 1.5 21 1.95 21 2.5V9.5C21 10.05 20.55 10.5 20 10.5H2C1.45 10.5 1 10.05 1 9.5V2.5Z" stroke="#0f172a" stroke-width="1.2"/><path d="M22.5 4V8" stroke="#0f172a" stroke-width="1.5" stroke-linecap="round"/><rect id="statusbar-preview-battery-fill" x="2" y="2.5" width="18" height="7" rx="0.5" fill="#0f172a"/></svg>
+                    <span id="statusbar-preview-level">--%</span>
+                </span>
+            </div>
+
+            <div class="cust-field-item">
+                <span class="cust-field-label">容器 CSS</span>
+                <textarea id="statusbar-container-css" class="cust-textarea" rows="3" placeholder="background: transparent;\ncolor: #333;">${statusBarSettings.containerCss !== undefined ? statusBarSettings.containerCss : 'background: transparent;\ncolor: #333;\nborder-radius: 0;'}</textarea>
+            </div>
+            <div class="cust-field-item">
+                <span class="cust-field-label">时间 CSS</span>
+                <textarea id="statusbar-time-css" class="cust-textarea" rows="2" placeholder="font-size: 14px;\nfont-weight: bold;">${statusBarSettings.timeCss !== undefined ? statusBarSettings.timeCss : 'font-size: 14px;\nfont-weight: bold;\ncolor: #333;'}</textarea>
+            </div>
+            <div class="cust-field-item">
+                <span class="cust-field-label">电量 CSS</span>
+                <textarea id="statusbar-battery-css" class="cust-textarea" rows="2" placeholder="font-size: 12px;\ncolor: #4CAF50;">${statusBarSettings.batteryCss !== undefined ? statusBarSettings.batteryCss : 'font-size: 12px;\ncolor: #4CAF50;'}</textarea>
+            </div>
+
+            <div class="cust-btn-group">
+                <button type="button" id="statusbar-apply-btn" class="cust-btn cust-btn-primary" style="flex:1;">应用样式</button>
+                <button type="button" id="statusbar-reset-btn" class="cust-btn" style="flex:1;">重置默认</button>
+                <button type="button" id="statusbar-export-btn" class="cust-btn" style="flex:1;">导出</button>
+                <button type="button" id="statusbar-import-btn" class="cust-btn" style="flex:1;">导入</button>
+                <input type="file" id="statusbar-import-file" accept=".json" style="display:none;">
+            </div>
         </div>
-        <div class="collapsible-content">
-            <div class="kkt-item" style="display:block; padding: 15px;">
-                <p style="font-size: 13px; color: #888; margin-bottom: 12px; line-height: 1.5;">开启后整个应用切换为暗色主题，也可设置定时自动切换。支持自定义夜间模式的 CSS 样式覆盖。</p>
 
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                    <label style="font-size:14px; color:#333;">启用夜间模式</label>
-                    <label class="kkt-switch"><input type="checkbox" id="night-mode-enabled" ${nightSettings.enabled ? 'checked' : ''}><span class="kkt-slider"></span></label>
+        <!-- 夜间模式 -->
+        <div class="cust-card">
+            <div class="cust-card-header">
+                <div>
+                    <h3 class="cust-card-title">夜间暗色模式</h3>
+                    <p class="cust-card-subtitle">支持定时自动切换与自定义夜间 CSS 样式覆盖。</p>
                 </div>
+                <label class="kkt-switch">
+                    <input type="checkbox" id="night-mode-enabled" ${nightSettings.enabled ? 'checked' : ''}>
+                    <span class="kkt-slider"></span>
+                </label>
+            </div>
 
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                    <label style="font-size:14px; color:#333;">定时自动切换</label>
-                    <label class="kkt-switch"><input type="checkbox" id="night-mode-auto" ${nightSettings.auto ? 'checked' : ''}><span class="kkt-slider"></span></label>
-                </div>
-                <div id="night-mode-schedule" style="display:${nightSettings.auto ? 'flex' : 'none'}; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
-                    <label style="font-size:13px; color:#666;">开始</label>
-                    <input type="time" id="night-mode-start" value="${nightSettings.startTime || '22:00'}" style="border:1px solid #ddd; border-radius:6px; padding:4px 8px; font-size:13px;">
-                    <label style="font-size:13px; color:#666;">结束</label>
-                    <input type="time" id="night-mode-end" value="${nightSettings.endTime || '07:00'}" style="border:1px solid #ddd; border-radius:6px; padding:4px 8px; font-size:13px;">
-                </div>
+            <div class="cust-field-item-row">
+                <span class="cust-field-label">定时自动切换</span>
+                <label class="kkt-switch">
+                    <input type="checkbox" id="night-mode-auto" ${nightSettings.auto ? 'checked' : ''}>
+                    <span class="kkt-slider"></span>
+                </label>
+            </div>
 
-                <div style="margin-bottom:12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                        <label style="font-size:14px; color:#333;">自定义夜间 CSS</label>
-                        <div style="display:flex; gap:6px;">
-                            <button type="button" id="night-css-apply-btn" class="btn btn-primary btn-small" style="padding:4px 8px;">应用</button>
-                            <button type="button" id="night-css-reset-btn" class="btn btn-small" style="padding:4px 8px;">重置</button>
+            <div id="night-mode-schedule" style="display:${nightSettings.auto ? 'flex' : 'none'}; gap:10px; align-items:center;">
+                <label style="font-size:13px; color:#64748b;">开始</label>
+                <input type="time" id="night-mode-start" value="${nightSettings.startTime || '22:00'}" class="cust-input-text" style="flex:1; height:34px;">
+                <label style="font-size:13px; color:#64748b;">结束</label>
+                <input type="time" id="night-mode-end" value="${nightSettings.endTime || '07:00'}" class="cust-input-text" style="flex:1; height:34px;">
+            </div>
+
+            <div class="cust-field-item">
+                <div class="cust-field-item-row">
+                    <span class="cust-field-label">夜间自定义 CSS</span>
+                    <div style="display:flex; gap:6px;">
+                        <button type="button" id="night-css-apply-btn" class="cust-btn cust-btn-primary" style="height:28px; padding:0 8px; font-size:12px;">应用</button>
+                        <button type="button" id="night-css-reset-btn" class="cust-btn" style="height:28px; padding:0 8px; font-size:12px;">重置</button>
+                    </div>
+                </div>
+                <textarea id="night-mode-custom-css" class="cust-textarea" rows="8" placeholder="在此输入自定义夜间CSS代码...">${nightSettings.customCss || DEFAULT_NIGHT_MODE_CSS}</textarea>
+            </div>
+
+            <div class="cust-btn-group">
+                <button type="button" id="night-mode-export-btn" class="cust-btn" style="flex:1;">导出夜间配置</button>
+                <button type="button" id="night-mode-import-btn" class="cust-btn" style="flex:1;">导入夜间配置</button>
+                <input type="file" id="night-mode-import-file" accept=".json" style="display:none;">
+            </div>
+        </div>
+
+        <!-- 全局 CSS 美化 -->
+        <div class="cust-card">
+            <div class="cust-card-header">
+                <div>
+                    <h3 class="cust-card-title">全局 CSS 美化与拓展</h3>
+                    <p class="cust-card-subtitle">自由编写或应用 CSS 预设定制全应用细节。</p>
+                </div>
+            </div>
+
+            <div class="cust-field-item">
+                <div class="cust-field-item-row">
+                    <span class="cust-field-label">CSS 代码</span>
+                    <div style="display:flex; gap:6px;">
+                        <button type="button" id="global-css-import-doc-btn" class="cust-btn" style="height:28px; padding:0 8px; font-size:12px;">导入文档</button>
+                        <button type="button" id="apply-global-css-now-btn" class="cust-btn cust-btn-primary" style="height:28px; padding:0 8px; font-size:12px;">立即应用</button>
+                        <button type="button" id="reset-global-css-btn" class="cust-btn" style="height:28px; padding:0 8px; font-size:12px;">重置</button>
+                    </div>
+                </div>
+                <input type="file" id="global-css-import-file" accept=".txt,.docx" style="display:none;">
+                <textarea id="global-beautification-css" class="cust-textarea" rows="8" placeholder="在此输入CSS代码..."></textarea>
+            </div>
+
+            <div class="cust-preset-bar">
+                <div class="cust-preset-select-row">
+                    <label for="global-css-preset-select">CSS 预设</label>
+                    <select id="global-css-preset-select"><option value="">-- 选择预设 --</option></select>
+                </div>
+                <div class="cust-btn-group">
+                    <button type="button" id="global-css-apply-btn" class="cust-btn cust-btn-primary" style="flex:1;">应用</button>
+                    <button type="button" id="global-css-save-btn" class="cust-btn" style="flex:1;">保存</button>
+                    <button type="button" id="global-css-manage-btn" class="cust-btn" style="flex:1;">管理</button>
+                </div>
+            </div>
+
+            <div class="cust-field-item">
+                <span class="cust-field-label" style="margin-bottom:6px;">拓展美化代码库</span>
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                    <div class="cust-code-card css-template-card">
+                        <div class="cust-field-item-row">
+                            <span style="font-weight:600; font-size:13px; color:#0f172a;">隐藏聊天顶栏分割线</span>
+                            <button type="button" class="cust-btn cust-btn-primary copy-css-btn" style="height:28px; padding:0 10px; font-size:12px;">复制代码</button>
                         </div>
+                        <pre><code>#chat-room-screen .app-header {
+border-bottom: none !important;
+}</code></pre>
                     </div>
-                    <textarea id="night-mode-custom-css" rows="12" placeholder="在此输入自定义夜间模式CSS代码..." style="width:100%; border:1px solid #eee; border-radius:8px; padding:10px; font-size:12px; font-family:monospace;">${nightSettings.customCss || DEFAULT_NIGHT_MODE_CSS}</textarea>
-                </div>
 
-                <div style="display:flex; gap:8px; justify-content:flex-end;">
-                    <button type="button" id="night-mode-export-btn" class="btn btn-small btn-neutral" style="padding:4px 8px;">导出配置</button>
-                    <button type="button" id="night-mode-import-btn" class="btn btn-small btn-neutral" style="padding:4px 8px;">导入配置</button>
-                    <input type="file" id="night-mode-import-file" accept=".json" style="display:none;">
+                    <div class="cust-code-card css-template-card">
+                        <div class="cust-field-item-row">
+                            <span style="font-weight:600; font-size:13px; color:#0f172a;">隐藏聊天头像与时间戳</span>
+                            <button type="button" class="cust-btn cust-btn-primary copy-css-btn" style="height:28px; padding:0 10px; font-size:12px;">复制代码</button>
+                        </div>
+                        <pre><code>.message-info {
+display: none !important;
+}
+.voice-transcript, .translation-text {
+margin-left: 8px !important;
+margin-right: 8px !important;
+}
+.message-wrapper.sent .voice-transcript,
+.message-wrapper.sent .translation-text {
+align-self: flex-end;
+margin-left: auto !important;
+}</code></pre>
+                    </div>
+
+                    <div class="cust-code-card css-template-card">
+                        <div class="cust-field-item-row">
+                            <span style="font-weight:600; font-size:13px; color:#0f172a;">iOS 灵动岛/刘海屏防遮挡补丁</span>
+                            <button type="button" class="cust-btn cust-btn-primary copy-css-btn" style="height:28px; padding:0 10px; font-size:12px;">复制代码</button>
+                        </div>
+                        <pre><code>.app-header {
+    padding-top: calc(15px + var(--ovo-safe-area-top)) !important;
+    height: auto !important;
+}
+#home-screen {
+    padding-top: calc(45px + var(--ovo-safe-area-top)) !important;
+}
+.settings-sidebar .header {
+    padding-top: calc(15px + var(--ovo-safe-area-top)) !important;
+}
+.message-input-area,
+#multi-select-bar,
+#world-book-multi-select-bar {
+    padding-bottom: calc(10px + var(--ovo-safe-area-bottom)) !important;
+}</code></pre>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
     `;
 
-    // ---------- 顶栏状态栏设置 ----------
-    const statusBarSettings = db.homeStatusBarSettings || {};
-    const statusBarSectionHTML = `
-    <div class="kkt-group collapsible-section" style="background-color: #fff; border: none; margin-bottom: 15px;">
-        <div class="kkt-item collapsible-header" style="background-color: #fff; border-bottom: 1px solid #f5f5f5; cursor: pointer; padding: 15px;">
-            <div class="kkt-item-label" style="font-weight:bold; color:#333; font-size: 15px;">顶栏电量 + 时间</div>
-            <span class="collapsible-arrow">▼</span>
-        </div>
-        <div class="collapsible-content">
-            <div class="kkt-item" style="display:block; padding: 15px;">
-                <p style="font-size: 13px; color: #888; margin-bottom: 12px; line-height: 1.5;">在所有页面顶部透明显示实时时间和电量，融入界面不遮挡。可自定义顶栏容器、时间、电量的 CSS 样式。</p>
-
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                    <label style="font-size:14px; color:#333;">显示顶栏状态栏</label>
-                    <label class="kkt-switch"><input type="checkbox" id="home-statusbar-enabled" ${statusBarSettings.enabled ? 'checked' : ''}><span class="kkt-slider"></span></label>
-                </div>
-
-                <div style="background:#f5f5f5; border-radius:10px; padding:10px 16px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; font-size:13px; color:#333;">
-                    <span id="statusbar-preview-time" style="font-weight:600;">--:--</span>
-                    <span style="display:flex; align-items:center; gap:4px;">
-                        <svg width="18" height="11" viewBox="0 0 24 12" fill="none"><path d="M1 2.5C1 1.95 1.45 1.5 2 1.5H20C20.55 1.5 21 1.95 21 2.5V9.5C21 10.05 20.55 10.5 20 10.5H2C1.45 10.5 1 10.05 1 9.5V2.5Z" stroke="#666" stroke-width="1"/><path d="M22.5 4V8" stroke="#666" stroke-width="1.5" stroke-linecap="round"/><rect id="statusbar-preview-battery-fill" x="2" y="2.5" width="18" height="7" rx="0.5" fill="#666"/></svg>
-                        <span id="statusbar-preview-level">--%</span>
-                    </span>
-                </div>
-
-                <div style="margin-bottom:12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                        <label style="font-size:14px; color:#333;">顶栏容器 CSS</label>
-                    </div>
-                    <textarea id="statusbar-container-css" rows="4" placeholder="例如：\nbackground: transparent;\ncolor: #333;\nborder-radius: 0;" style="width:100%; border:1px solid #eee; border-radius:8px; padding:10px; font-size:12px; font-family:monospace;">${statusBarSettings.containerCss !== undefined ? statusBarSettings.containerCss : 'background: transparent;\ncolor: #333;\nborder-radius: 0;'}</textarea>
-                </div>
-
-                <div style="margin-bottom:12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                        <label style="font-size:14px; color:#333;">时间样式 CSS</label>
-                    </div>
-                    <textarea id="statusbar-time-css" rows="3" placeholder="例如：\nfont-size: 14px;\nfont-weight: bold;\ncolor: #333;" style="width:100%; border:1px solid #eee; border-radius:8px; padding:10px; font-size:12px; font-family:monospace;">${statusBarSettings.timeCss !== undefined ? statusBarSettings.timeCss : 'font-size: 14px;\nfont-weight: bold;\ncolor: #333;'}</textarea>
-                </div>
-
-                <div style="margin-bottom:12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                        <label style="font-size:14px; color:#333;">电量样式 CSS</label>
-                    </div>
-                    <textarea id="statusbar-battery-css" rows="3" placeholder="例如：\nfont-size: 12px;\ncolor: #4CAF50;" style="width:100%; border:1px solid #eee; border-radius:8px; padding:10px; font-size:12px; font-family:monospace;">${statusBarSettings.batteryCss !== undefined ? statusBarSettings.batteryCss : 'font-size: 12px;\ncolor: #4CAF50;'}</textarea>
-                </div>
-
-                <div style="display:flex; gap:8px; justify-content:flex-end; margin-bottom:8px;">
-                    <button type="button" id="statusbar-apply-btn" class="btn btn-primary btn-small" style="padding:4px 8px;">应用</button>
-                    <button type="button" id="statusbar-reset-btn" class="btn btn-small" style="padding:4px 8px;">重置</button>
-                </div>
-                <div style="display:flex; gap:8px; justify-content:flex-end;">
-                    <button type="button" id="statusbar-export-btn" class="btn btn-small btn-neutral" style="padding:4px 8px;">导出配置</button>
-                    <button type="button" id="statusbar-import-btn" class="btn btn-small btn-neutral" style="padding:4px 8px;">导入配置</button>
-                    <input type="file" id="statusbar-import-file" accept=".json" style="display:none;">
-                </div>
-            </div>
-        </div>
-    </div>
-    `;
-
-    container.innerHTML = iconsSectionHTML + namesSectionHTML + widgetSectionHTML + widgetWallpaperSectionHTML + fontsSectionHTML + soundSectionHTML + globalCssSectionHTML + nightModeSectionHTML + statusBarSectionHTML;
+    container.innerHTML = navTabsHTML + paneAppsHTML + paneDesktopHTML + paneMediaHTML + paneSystemHTML;
     customizeForm.appendChild(container);
 
     populateGlobalCssPresetSelect();
@@ -1357,4 +1275,3 @@ body.night-mode-active .message-input-area textarea {
 // ============================================
 // 夜间模式
 // ============================================
-

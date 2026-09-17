@@ -128,6 +128,7 @@ const init = async () => {
     if (window.VideoCallModule) window.VideoCallModule.init();
     if (typeof NodeSystem !== 'undefined') NodeSystem.init();
     if (typeof KeepAliveModule !== 'undefined') KeepAliveModule.init();
+    if (window.ReplyResilience) await window.ReplyResilience.init();
 
     // 全局事件绑定
     const delWBBtn = document.getElementById('delete-selected-world-books-btn');
@@ -180,9 +181,14 @@ const init = async () => {
     });
 };
 
+let autoReplyCheckRunning = false;
+
 async function checkAutoReply() {
+    if (autoReplyCheckRunning || typeof db === 'undefined' || !Array.isArray(db.characters)) return;
+    autoReplyCheckRunning = true;
     const now = Date.now();
-    for (const char of db.characters) {
+    try {
+      for (const char of db.characters) {
         if (char.autoReply && char.autoReply.enabled) {
             const mode = char.autoReply.mode || 'fixed';
             let intervalMs;
@@ -199,10 +205,13 @@ async function checkAutoReply() {
                 intervalMs = (char.autoReply.interval || 60) * 60 * 1000;
             }
             
-            const lastTriggerTime = char.autoReply.lastTriggerTime || 0;
+            const lastTriggerTime = char.autoReply.lastSuccessTime || char.autoReply.lastTriggerTime || 0;
+            const retryAt = Number(char.autoReply.retryAt || 0);
             
-            // 检查上次触发时间
-            if (now - lastTriggerTime < intervalMs) continue;
+            // 正常周期未到，且当前不是失败后的到期重试。
+            if ((!retryAt || now < retryAt) && now - lastTriggerTime < intervalMs) continue;
+            if (retryAt && now < retryAt) continue;
+            if (typeof isInQuietHours === 'function' && isInQuietHours(char.id)) continue;
 
             let lastMsgTime = 0;
             if (char.history && char.history.length > 0) {
@@ -215,20 +224,44 @@ async function checkAutoReply() {
             // 检查无操作时间 (最后一条消息到现在的时间)
             if (now - lastMsgTime > intervalMs) {
                 console.log(`Auto-reply triggered for ${char.remarkName} (mode: ${mode}, interval: ${intervalMs/60000}m)`);
-                char.autoReply.lastTriggerTime = now;
-                if (mode === 'random') {
-                    // 触发后重新生成下一次的随机间隔
-                    const min = char.autoReply.minInterval || 60;
-                    const max = char.autoReply.maxInterval || 180;
-                    const randomMinutes = Math.floor(Math.random() * (max - min + 1)) + min;
-                    char.autoReply.nextRandomIntervalMs = randomMinutes * 60 * 1000;
+                char.autoReply.lastAttemptTime = now;
+                // 先持久化尝试标记，但不提前消耗成功周期。
+                await saveCharacter(char.id);
+                const succeeded = await getAiReply(char.id, 'private', true);
+                if (succeeded) {
+                    const completedAt = Date.now();
+                    char.autoReply.lastTriggerTime = completedAt;
+                    char.autoReply.lastSuccessTime = completedAt;
+                    char.autoReply.retryAt = 0;
+                    char.autoReply.failureCount = 0;
+                    if (mode === 'random') {
+                        const min = char.autoReply.minInterval || 60;
+                        const max = char.autoReply.maxInterval || 180;
+                        const randomMinutes = Math.floor(Math.random() * (max - min + 1)) + min;
+                        char.autoReply.nextRandomIntervalMs = randomMinutes * 60 * 1000;
+                    }
+                } else {
+                    const failureCount = Math.min(3, Number(char.autoReply.failureCount || 0) + 1);
+                    char.autoReply.failureCount = failureCount;
+                    // 1/3/15 分钟退避，页面恢复或联网后也会及时补检。
+                    const backoffMinutes = failureCount === 1 ? 1 : failureCount === 2 ? 3 : 15;
+                    char.autoReply.retryAt = Date.now() + backoffMinutes * 60 * 1000;
                 }
-                await saveCharacter(char.id); // 先保存触发时间和下一次间隔，防止重复触发
-                await getAiReply(char.id, 'private', true);
+                await saveCharacter(char.id);
             }
         }
+      }
+    } finally {
+        autoReplyCheckRunning = false;
     }
 }
+
+// 从后台回到页面或网络恢复时做一次补检；单次补检每个角色最多触发一条。
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void checkAutoReply();
+});
+window.addEventListener('pageshow', () => { void checkAutoReply(); });
+window.addEventListener('online', () => { void checkAutoReply(); });
 
 // === 主入口 ===
 document.addEventListener('DOMContentLoaded', async () => {

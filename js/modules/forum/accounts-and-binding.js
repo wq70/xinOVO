@@ -26,6 +26,10 @@ function forumSwitchAccount(accountId) {
     forumRenderAltAccountsList();
     var acc = forumGetActiveAccount();
     showToast('已切换为: ' + acc.username);
+    if (typeof renderForumPosts === 'function') renderForumPosts(db.forumPosts || [], typeof forumGetActiveFilter === 'function' ? forumGetActiveFilter() : 'all');
+    if (typeof forumRenderDMList === 'function') forumRenderDMList();
+    if (typeof forumUpdateDMUnreadBadge === 'function') forumUpdateDMUnreadBadge();
+    if (typeof forumUpdateIdentityChip === 'function') forumUpdateIdentityChip();
 }
 
 function forumCreateAltAccount(data) {
@@ -58,6 +62,8 @@ function forumDeleteAltAccount(altId) {
     if (db.forumActiveAccountId === altId) {
         db.forumActiveAccountId = 'main';
     }
+    // Posts, messages and relationship history intentionally remain addressable.
+    // Existing data is never silently deleted when an identity is removed.
     saveData();
 }
 
@@ -69,9 +75,9 @@ function forumRenderAltAccountsList() {
     // 渲染当前身份
     var active = forumGetActiveAccount();
     if (displayEl) {
-        displayEl.innerHTML = '<img class="forum-alt-identity-avatar" src="' + (active.avatar || 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg') + '">'
-            + '<div class="forum-alt-identity-info"><div class="forum-alt-identity-name">' + (active.username || '未设置') + (active.isAlt ? ' <span style="font-size:11px;color:#999;">(小号)</span>' : ' <span style="font-size:11px;color:#999;">(大号)</span>') + '</div>'
-            + '<div class="forum-alt-identity-bio">' + (active.bio || '暂无简介') + '</div></div>'
+        displayEl.innerHTML = '<img class="forum-alt-identity-avatar" src="' + forumEscapeHtml(forumSafeImageUrl(active.avatar)) + '">'
+            + '<div class="forum-alt-identity-info"><div class="forum-alt-identity-name">' + forumEscapeHtml(active.username || '未设置') + (active.isAlt ? ' <span style="font-size:11px;color:#999;">(小号)</span>' : ' <span style="font-size:11px;color:#999;">(大号)</span>') + '</div>'
+            + '<div class="forum-alt-identity-bio">' + forumEscapeHtml(active.bio || '暂无简介') + '</div></div>'
             + '<span class="forum-alt-identity-badge">使用中</span>';
     }
 
@@ -84,9 +90,9 @@ function forumRenderAltAccountsList() {
             forumInitUserProfile();
             var mainP = db.forumUserProfile;
             listEl.innerHTML = '<div class="forum-alt-identity-card" data-alt-id="main">'
-                + '<img class="forum-alt-identity-avatar" src="' + (mainP.avatar || 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg') + '">'
-                + '<div class="forum-alt-identity-info"><div class="forum-alt-identity-name">' + (mainP.username || '大号') + ' <span style="font-size:11px;color:#999;">(大号)</span></div>'
-                + '<div class="forum-alt-identity-bio">' + (mainP.bio || '暂无简介') + '</div></div>'
+                + '<img class="forum-alt-identity-avatar" src="' + forumEscapeHtml(forumSafeImageUrl(mainP.avatar)) + '">'
+                + '<div class="forum-alt-identity-info"><div class="forum-alt-identity-name">' + forumEscapeHtml(mainP.username || '大号') + ' <span style="font-size:11px;color:#999;">(大号)</span></div>'
+                + '<div class="forum-alt-identity-bio">' + forumEscapeHtml(mainP.bio || '暂无简介') + '</div></div>'
                 + '<button class="btn btn-small btn-primary" style="padding:4px 12px;font-size:12px;" onclick="forumSwitchAccount(\'main\')">切换</button></div>'
                 + '<div class="forum-alt-empty-hint">还没有小号，点击右上角「新建小号」创建一个吧</div>';
         }
@@ -99,22 +105,22 @@ function forumRenderAltAccountsList() {
         forumInitUserProfile();
         var mainProfile = db.forumUserProfile;
         html += '<div class="forum-alt-identity-card" data-alt-id="main">'
-            + '<img class="forum-alt-identity-avatar" src="' + (mainProfile.avatar || 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg') + '">'
-            + '<div class="forum-alt-identity-info"><div class="forum-alt-identity-name">' + (mainProfile.username || '大号') + ' <span style="font-size:11px;color:#999;">(大号)</span></div>'
-            + '<div class="forum-alt-identity-bio">' + (mainProfile.bio || '暂无简介') + '</div></div>'
+            + '<img class="forum-alt-identity-avatar" src="' + forumEscapeHtml(forumSafeImageUrl(mainProfile.avatar)) + '">'
+            + '<div class="forum-alt-identity-info"><div class="forum-alt-identity-name">' + forumEscapeHtml(mainProfile.username || '大号') + ' <span style="font-size:11px;color:#999;">(大号)</span></div>'
+            + '<div class="forum-alt-identity-bio">' + forumEscapeHtml(mainProfile.bio || '暂无简介') + '</div></div>'
             + '<button class="btn btn-small btn-primary" style="padding:4px 12px;font-size:12px;" onclick="forumSwitchAccount(\'main\')">切换</button></div>';
     }
 
     alts.forEach(function(alt) {
         var isActive = (db.forumActiveAccountId === alt.id);
         html += '<div class="forum-alt-identity-card' + (isActive ? ' forum-alt-identity-active' : '') + '" data-alt-id="' + alt.id + '">'
-            + '<img class="forum-alt-identity-avatar" src="' + (alt.avatar || 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg') + '">'
-            + '<div class="forum-alt-identity-info"><div class="forum-alt-identity-name">' + (alt.username || '小号') + '</div>'
-            + '<div class="forum-alt-identity-bio">' + (alt.bio || '暂无简介') + '</div></div>'
+            + '<img class="forum-alt-identity-avatar" src="' + forumEscapeHtml(forumSafeImageUrl(alt.avatar)) + '">'
+            + '<div class="forum-alt-identity-info"><div class="forum-alt-identity-name">' + forumEscapeHtml(alt.username || '小号') + '</div>'
+            + '<div class="forum-alt-identity-bio">' + forumEscapeHtml(alt.bio || '暂无简介') + '</div></div>'
             + '<div class="forum-alt-identity-actions">'
-            + (isActive ? '<span class="forum-alt-identity-badge">使用中</span>' : '<button onclick="forumSwitchAccount(\'' + alt.id + '\')">切换</button>')
-            + '<button onclick="forumOpenAltEditModal(\'' + alt.id + '\')">编辑</button>'
-            + '<button class="alt-delete-btn" onclick="event.stopPropagation();forumConfirmDeleteAlt(\'' + alt.id + '\')">删除</button>'
+            + (isActive ? '<span class="forum-alt-identity-badge">使用中</span>' : '<button onclick="forumSwitchAccount(\'' + forumEscapeHtml(alt.id) + '\')">切换</button>')
+            + '<button onclick="forumOpenAltEditModal(\'' + forumEscapeHtml(alt.id) + '\')">编辑</button>'
+            + '<button class="alt-delete-btn" onclick="event.stopPropagation();forumConfirmDeleteAlt(\'' + forumEscapeHtml(alt.id) + '\')">删除</button>'
             + '</div></div>';
     });
     listEl.innerHTML = html;
@@ -170,6 +176,7 @@ function forumSaveAltFromModal() {
     }
     forumCloseAltEditModal();
     forumRenderAltAccountsList();
+    forumUpdateIdentityChip();
 }
 
 function forumConfirmDeleteAlt(altId) {
@@ -178,6 +185,7 @@ function forumConfirmDeleteAlt(altId) {
     if (confirm('确定删除小号「' + alt.username + '」吗？')) {
         forumDeleteAltAccount(altId);
         forumRenderAltAccountsList();
+        forumUpdateIdentityChip();
         showToast('小号已删除');
     }
 }
@@ -273,8 +281,8 @@ function setupForumBindingFeature() {
                 const li = document.createElement('li');
                 li.className = 'binding-list-item';
                 li.innerHTML = `
-                    <input type="checkbox" id="char-bind-${char.id}" value="${char.id}" ${isChecked ? 'checked' : ''}>
-                    <label for="char-bind-${char.id}">${char.remarkName}</label>
+                    <input type="checkbox" id="char-bind-${forumEscapeHtml(char.id)}" value="${forumEscapeHtml(char.id)}" ${isChecked ? 'checked' : ''}>
+                    <label for="char-bind-${forumEscapeHtml(char.id)}">${forumEscapeHtml(char.remarkName)}</label>
                 `;
                 charList.appendChild(li);
             });
@@ -288,8 +296,8 @@ function setupForumBindingFeature() {
                 const li = document.createElement('li');
                 li.className = 'binding-list-item';
                 li.innerHTML = `
-                    <input type="checkbox" id="user-bind-${preset.name.replace(/\s/g, '_')}" value="${preset.name}" ${isChecked ? 'checked' : ''}>
-                    <label for="user-bind-${preset.name.replace(/\s/g, '_')}">${preset.name}</label>
+                    <input type="checkbox" id="user-bind-${forumEscapeHtml(preset.name.replace(/\s/g, '_'))}" value="${forumEscapeHtml(preset.name)}" ${isChecked ? 'checked' : ''}>
+                    <label for="user-bind-${forumEscapeHtml(preset.name.replace(/\s/g, '_'))}">${forumEscapeHtml(preset.name)}</label>
                 `;
                 userList.appendChild(li);
             });
@@ -300,4 +308,3 @@ function setupForumBindingFeature() {
         modal.classList.add('visible');
     }
 }
-

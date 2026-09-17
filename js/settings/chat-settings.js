@@ -205,6 +205,9 @@ function setupChatSettings() {
                 showToast('正在识别头像变化…');
                 await window.AvatarSystem.recognizeAndNotifyUserAvatarChange(currentChatId, oldMyAvatar, compressedUrl);
             }
+            if (window.AvatarSystem && typeof window.AvatarSystem.syncManualAvatarChange === 'function') {
+                window.AvatarSystem.syncManualAvatarChange(currentChatId, compressedUrl, undefined);
+            }
             char.myAvatar = compressedUrl;
             await saveCharacter(currentChatId);
             document.getElementById('setting-my-avatar-preview').src = compressedUrl;
@@ -1397,12 +1400,14 @@ function loadSettingsToSidebar() {
             if (db.magicRoom && db.magicRoom.presets) {
                 db.magicRoom.presets.forEach(p => {
                     const opt = document.createElement('option');
-                    opt.value = p.name;
+                    opt.value = p.id || p.name;
                     opt.textContent = p.name;
                     customPromptPresetEl.appendChild(opt);
                 });
             }
-            customPromptPresetEl.value = e.customPromptPreset || '';
+            const presetRef = e.customPromptPresetId || e.customPromptPreset || '';
+            const matchedPreset = (db.magicRoom && db.magicRoom.presets || []).find(p => p.id === presetRef || p.name === presetRef);
+            customPromptPresetEl.value = matchedPreset ? (matchedPreset.id || matchedPreset.name) : '';
         }
         
         document.getElementById('setting-char-persona').value = e.persona;
@@ -2128,6 +2133,27 @@ function loadSettingsToSidebar() {
         const familyCardEnabledEl = document.getElementById('setting-family-card-enabled');
         if (familyCardEnabledEl) familyCardEnabledEl.checked = e.familyCardEnabled === true;
 
+        const autonomousShoppingEl = document.getElementById('setting-autonomous-shopping-enabled');
+        if (autonomousShoppingEl) autonomousShoppingEl.checked = e.autonomousShoppingEnabled === true;
+        const ownWalletShoppingEl = document.getElementById('setting-character-own-wallet-shopping-enabled');
+        if (ownWalletShoppingEl) ownWalletShoppingEl.checked = e.characterOwnWalletShoppingEnabled !== false;
+        const familyCardSpendingEl = document.getElementById('setting-character-family-card-spending-enabled');
+        if (familyCardSpendingEl) familyCardSpendingEl.checked = e.characterFamilyCardSpendingEnabled === true;
+        const selfShoppingEl = document.getElementById('setting-character-self-shopping-enabled');
+        if (selfShoppingEl) selfShoppingEl.checked = e.characterSelfShoppingEnabled !== false;
+        const giftShoppingEl = document.getElementById('setting-character-gift-shopping-enabled');
+        if (giftShoppingEl) giftShoppingEl.checked = e.characterGiftShoppingEnabled !== false;
+        const payRequestEl = document.getElementById('setting-character-pay-request-enabled');
+        if (payRequestEl) payRequestEl.checked = e.characterPayRequestEnabled !== false;
+        const shoppingSingleLimitEl = document.getElementById('setting-character-shopping-single-limit');
+        if (shoppingSingleLimitEl) shoppingSingleLimitEl.value = e.characterShoppingSingleLimit ?? 200;
+        const shoppingBudgetEl = document.getElementById('setting-character-shopping-period-budget');
+        if (shoppingBudgetEl) shoppingBudgetEl.value = e.characterShoppingPeriodBudget ?? 1000;
+        const shoppingFrequencyEl = document.getElementById('setting-character-shopping-frequency');
+        if (shoppingFrequencyEl) shoppingFrequencyEl.value = e.characterShoppingFrequency || 'rare';
+        const shoppingCategoriesEl = document.getElementById('setting-character-shopping-categories');
+        if (shoppingCategoriesEl) shoppingCategoriesEl.value = e.characterShoppingAllowedCategories || '';
+
         document.getElementById('setting-video-call-enabled').checked = e.videoCallEnabled || false;
         document.getElementById('setting-real-camera-enabled').checked = e.realCameraEnabled || false;
         document.getElementById('setting-vc-novelai-enabled').checked = e.vcNovelAiEnabled || false;
@@ -2326,7 +2352,10 @@ async function saveSettingsFromSidebar() {
         if (enableDynamicTimezoneInput) e.enableDynamicTimezone = enableDynamicTimezoneInput.checked;
         
         const customPromptPresetInput = document.getElementById('setting-char-custom-prompt-preset');
-        if (customPromptPresetInput) e.customPromptPreset = customPromptPresetInput.value;
+        if (customPromptPresetInput) {
+            e.customPromptPresetId = customPromptPresetInput.value;
+            e.customPromptPreset = customPromptPresetInput.value;
+        }
 
         e.persona = document.getElementById('setting-char-persona').value;
         
@@ -2352,8 +2381,13 @@ async function saveSettingsFromSidebar() {
         // 头像系统：有头像变动则识别（含缓存）并系统通知
         const myAvatarPreviewEl = document.getElementById('setting-my-avatar-preview');
         const _newMyAvatar = myAvatarPreviewEl ? myAvatarPreviewEl.src : e.myAvatar;
-        if (window.AvatarSystem && e.charSenseAvatarChangeEnabled && e.myAvatar && _newMyAvatar !== e.myAvatar) {
+        const _previousCharAvatar = e.avatar;
+        const _senseAvatarChangeEnabled = document.getElementById('setting-char-sense-avatar-change').checked;
+        if (window.AvatarSystem && _senseAvatarChangeEnabled && e.myAvatar && _newMyAvatar !== e.myAvatar) {
             await window.AvatarSystem.recognizeAndNotifyUserAvatarChange(currentChatId, e.myAvatar, _newMyAvatar);
+        }
+        if (window.AvatarSystem && typeof window.AvatarSystem.syncManualAvatarChange === 'function') {
+            window.AvatarSystem.syncManualAvatarChange(currentChatId, _newMyAvatar, avatarPreviewEl ? avatarPreviewEl.src : _previousCharAvatar);
         }
         e.myAvatar = _newMyAvatar;
         e.myName = document.getElementById('setting-my-name').value;
@@ -2530,7 +2564,7 @@ async function saveSettingsFromSidebar() {
         e.showStatusUpdateMsg = document.getElementById('setting-show-status-update-msg').checked;
         e.showReminderMsg = document.getElementById('setting-show-reminder-msg').checked;
         e.avatarSystemEnabled = document.getElementById('setting-avatar-system-enabled').checked;
-        e.charSenseAvatarChangeEnabled = document.getElementById('setting-char-sense-avatar-change').checked;
+        e.charSenseAvatarChangeEnabled = _senseAvatarChangeEnabled;
         const charCanSwitchInput = document.getElementById('setting-char-can-switch-avatar');
         e.charCanSwitchAvatarEnabled = charCanSwitchInput ? charCanSwitchInput.checked : false;
         const charCollectInput = document.getElementById('setting-char-collect-image-as-avatar');
@@ -2579,6 +2613,27 @@ async function saveSettingsFromSidebar() {
         e.shopInteractionEnabled = document.getElementById('setting-shop-interaction-enabled').checked;
         const familyCardEnabledEl = document.getElementById('setting-family-card-enabled');
         if (familyCardEnabledEl) e.familyCardEnabled = familyCardEnabledEl.checked;
+
+        const autonomousShoppingEl = document.getElementById('setting-autonomous-shopping-enabled');
+        if (autonomousShoppingEl) e.autonomousShoppingEnabled = autonomousShoppingEl.checked;
+        const ownWalletShoppingEl = document.getElementById('setting-character-own-wallet-shopping-enabled');
+        if (ownWalletShoppingEl) e.characterOwnWalletShoppingEnabled = ownWalletShoppingEl.checked;
+        const familyCardSpendingEl = document.getElementById('setting-character-family-card-spending-enabled');
+        if (familyCardSpendingEl) e.characterFamilyCardSpendingEnabled = familyCardSpendingEl.checked;
+        const selfShoppingEl = document.getElementById('setting-character-self-shopping-enabled');
+        if (selfShoppingEl) e.characterSelfShoppingEnabled = selfShoppingEl.checked;
+        const giftShoppingEl = document.getElementById('setting-character-gift-shopping-enabled');
+        if (giftShoppingEl) e.characterGiftShoppingEnabled = giftShoppingEl.checked;
+        const payRequestEl = document.getElementById('setting-character-pay-request-enabled');
+        if (payRequestEl) e.characterPayRequestEnabled = payRequestEl.checked;
+        const shoppingSingleLimitEl = document.getElementById('setting-character-shopping-single-limit');
+        if (shoppingSingleLimitEl) e.characterShoppingSingleLimit = Math.max(0, Number(shoppingSingleLimitEl.value) || 0);
+        const shoppingBudgetEl = document.getElementById('setting-character-shopping-period-budget');
+        if (shoppingBudgetEl) e.characterShoppingPeriodBudget = Math.max(0, Number(shoppingBudgetEl.value) || 0);
+        const shoppingFrequencyEl = document.getElementById('setting-character-shopping-frequency');
+        if (shoppingFrequencyEl) e.characterShoppingFrequency = shoppingFrequencyEl.value || 'rare';
+        const shoppingCategoriesEl = document.getElementById('setting-character-shopping-categories');
+        if (shoppingCategoriesEl) e.characterShoppingAllowedCategories = shoppingCategoriesEl.value.trim();
 
         e.videoCallEnabled = document.getElementById('setting-video-call-enabled').checked;
         e.realCameraEnabled = document.getElementById('setting-real-camera-enabled').checked;

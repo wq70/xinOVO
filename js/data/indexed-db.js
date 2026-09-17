@@ -25,6 +25,8 @@ function initDatabase() {
                 summaryApiSettings: data.summaryApiSettings || {},
                 backgroundApiSettings: data.backgroundApiSettings || {},
                 vectorApiSettings: data.vectorApiSettings || {},
+                apiNodes: data.apiNodes || [],
+                apiNodeRoutes: data.apiNodeRoutes || {},
                 wallpaper: data.wallpaper || 'https://i.postimg.cc/W4Z9R9x4/ins-1.jpg',
                 globalChatWallpaper: data.globalChatWallpaper || '',
             homeScreenMode: data.homeScreenMode || 'night',
@@ -65,6 +67,9 @@ function initDatabase() {
             magicRoom: Object.assign({
                 customPromptEnabled: false,
                 customPromptTemplate: '',
+                promptEditMode: '',
+                customPromptItems: [],
+                presets: [],
                 sysNotifEnabled: false,
                 sysNotifSenderName: '',
                 sysNotifShowAvatar: true,
@@ -173,6 +178,20 @@ function initDatabase() {
         importArchives: '&id,characterId,timestamp', importGlobalSettings: 'key',
         naiVibeAssets: '&id,sourceHash,createdAt', naiVibeEncodings: '&id,assetId,model,modelKey,createdAt', naiVibeGroups: '&id,name,updatedAt',
         importNaiVibeAssets: '&id,sourceHash,createdAt', importNaiVibeEncodings: '&id,assetId,model,modelKey,createdAt', importNaiVibeGroups: '&id,name,updatedAt'
+    });
+    // 进行中的 AI 回复使用独立轻量表保存。它不属于用户聊天配置，也不进入备份导入，
+    // 仅用于移动端页面冻结、丢弃或重新加载后的本地恢复。
+    dexieDB.version(9).stores({
+        characters: '&id', groups: '&id', worldBooks: '&id', myStickers: '&id', globalSettings: 'key', archives: '&id,characterId,timestamp',
+        mcpConnections: '&id,type,enabled,status,updatedAt', mcpActivities: '&id,connectionId,status,chatId,createdAt',
+        mcpSettings: '&id', mcpSecrets: '&id', mcpSessions: '&id,connectionId,updatedAt',
+        mcpCapabilities: '&id,connectionId,kind,updatedAt', mcpSubscriptions: '&id,connectionId,uri,status',
+        mcpTasks: '&id,connectionId,status,updatedAt', mcpOAuthStates: '&id,connectionId,createdAt',
+        importCharacters: '&id', importGroups: '&id', importWorldBooks: '&id', importMyStickers: '&id',
+        importArchives: '&id,characterId,timestamp', importGlobalSettings: 'key',
+        naiVibeAssets: '&id,sourceHash,createdAt', naiVibeEncodings: '&id,assetId,model,modelKey,createdAt', naiVibeGroups: '&id,name,updatedAt',
+        importNaiVibeAssets: '&id,sourceHash,createdAt', importNaiVibeEncodings: '&id,assetId,model,modelKey,createdAt', importNaiVibeGroups: '&id,name,updatedAt',
+        pendingReplies: '&id,chatId,chatType,state,updatedAt'
     });
 }
 
@@ -351,6 +370,8 @@ const loadData = async () => {
             supplementPersonaApiSettings: {},
             peekApiSettings: {},
             vectorApiSettings: {},
+            apiNodes: [],
+            apiNodeRoutes: {},
             imageRecognitionEnabled: false,
             imageRecognitionApiSettings: {},
             stickerRecognitionApiSettings: {},
@@ -386,6 +407,15 @@ const loadData = async () => {
             forumStrangerProfiles: {},
             forumFriendRequests: [],
             forumPendingRequestFromUser: {},
+            forumAccountStates: {},
+            forumRelationships: {},
+            forumKnowledge: [],
+            forumSocialEdges: [],
+            forumStoryThreads: [],
+            forumEvents: [],
+            forumNotifications: [],
+            forumDrafts: [],
+            forumSchemaVersion: 2,
             pomodoroTasks: [],
             pomodoroSettings: { boundCharId: null, userPersona: '', focusBackground: '', taskCardBackground: '', encouragementMinutes: 25, pokeLimit: 5, globalWorldBookIds: [] },
             insWidgetSettings: { avatar1: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg', bubble1: 'love u.', avatar2: 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg', bubble2: 'miss u.' },
@@ -409,7 +439,7 @@ const loadData = async () => {
             hasSeenVideoCallDisclaimer: false,
             hasSeenVideoCallAvatarHint: false,
             favorites: [],
-            piggyBank: { balance: 520, transactions: [], familyCards: [], receivedFamilyCards: [] },
+            piggyBank: { balance: 520, transactions: [], familyCards: [], receivedFamilyCards: [], orders: [], events: [], familyCardNarrationMode: 'detailed', schemaVersion: 2 },
             theaterScenarios: [],
             theaterPromptPresets: [],
             theaterHtmlScenarios: [],
@@ -435,6 +465,9 @@ const loadData = async () => {
         magicRoom: {
             customPromptEnabled: false,
             customPromptTemplate: '',
+            promptEditMode: '',
+            customPromptItems: [],
+            presets: [],
             sysNotifEnabled: false,
             sysNotifSenderName: '',
             sysNotifShowAvatar: true,
@@ -445,6 +478,7 @@ const loadData = async () => {
             sysNotifServerKey: '',
         },
         keepAliveCodeEnabled: false,
+        keepAliveAutoWakeEnabled: true,
         keepAliveAudioEnabled: false,
         keepAliveAudioSrc: '',
         keepAliveAudioName: '',
@@ -461,6 +495,10 @@ const loadData = async () => {
     if (!Array.isArray(db.piggyBank.transactions)) db.piggyBank.transactions = [];
     if (!Array.isArray(db.piggyBank.familyCards)) db.piggyBank.familyCards = [];
     if (!Array.isArray(db.piggyBank.receivedFamilyCards)) db.piggyBank.receivedFamilyCards = [];
+    if (!Array.isArray(db.piggyBank.orders)) db.piggyBank.orders = [];
+    if (!Array.isArray(db.piggyBank.events)) db.piggyBank.events = [];
+    if (!db.piggyBank.familyCardNarrationMode) db.piggyBank.familyCardNarrationMode = 'detailed';
+    db.piggyBank.schemaVersion = Math.max(2, Number(db.piggyBank.schemaVersion) || 0);
     if (!db.forumStrangerProfiles || typeof db.forumStrangerProfiles !== 'object') db.forumStrangerProfiles = {};
     if (!Array.isArray(db.forumFriendRequests)) db.forumFriendRequests = [];
     if (!db.forumPendingRequestFromUser || typeof db.forumPendingRequestFromUser !== 'object') db.forumPendingRequestFromUser = {};
@@ -469,6 +507,7 @@ const loadData = async () => {
     if (db.forumSettings && !Array.isArray(db.forumSettings.charAltCharIds)) db.forumSettings.charAltCharIds = [];
     if (db.forumSettings && db.forumSettings.charAltProbability === undefined) db.forumSettings.charAltProbability = 25;
     if (db.forumSettings && (db.forumSettings.charAltNames === undefined || typeof db.forumSettings.charAltNames !== 'object')) db.forumSettings.charAltNames = {};
+    if (typeof forumEnsureData === 'function') forumEnsureData();
 
     // Data integrity checks
     db.characters.forEach(c => {
@@ -560,6 +599,19 @@ const loadData = async () => {
         if (!c.callHistory) c.callHistory = [];
         if (!c.userAvatarLibrary || !Array.isArray(c.userAvatarLibrary)) c.userAvatarLibrary = [];
         if (!c.charAvatarLibrary || !Array.isArray(c.charAvatarLibrary)) c.charAvatarLibrary = [];
+        if (!c.coupleAvatarLibrary || !Array.isArray(c.coupleAvatarLibrary)) c.coupleAvatarLibrary = [];
+        if (!c.avatarRelationshipHistory || !Array.isArray(c.avatarRelationshipHistory)) c.avatarRelationshipHistory = [];
+        if (c.activeCoupleAvatarId === undefined) c.activeCoupleAvatarId = null;
+        if (c.activeCoupleAvatarId && !c.coupleAvatarLibrary.some(function (item) { return item && item.id === c.activeCoupleAvatarId; })) {
+            c.activeCoupleAvatarId = null;
+        }
+        if (c.avatarSystemEnabled === undefined) c.avatarSystemEnabled = false;
+        if (c.charSenseAvatarChangeEnabled === undefined) c.charSenseAvatarChangeEnabled = false;
+        if (c.charCanSwitchAvatarEnabled === undefined) c.charCanSwitchAvatarEnabled = false;
+        if (c.charCollectImageAsAvatarEnabled === undefined) c.charCollectImageAsAvatarEnabled = false;
+        if (c.charCollectCoupleAvatarEnabled === undefined) c.charCollectCoupleAvatarEnabled = false;
+        if (c.charSenseCoupleAvatarEnabled === undefined) c.charSenseCoupleAvatarEnabled = false;
+        if (c.showAvatarActionMsg === undefined) c.showAvatarActionMsg = false;
         if (c.charTimezone === undefined) c.charTimezone = '';
         if (c.myTimezone === undefined) c.myTimezone = '';
         if (c.enableDynamicTimezone === undefined) c.enableDynamicTimezone = false;
@@ -578,6 +630,16 @@ const loadData = async () => {
         if (c.phoneControlViewLimit === undefined) c.phoneControlViewLimit = 10;
         if (!Array.isArray(c.phoneControlHistory)) c.phoneControlHistory = [];
         if (c.familyCardEnabled === undefined) c.familyCardEnabled = false;
+        if (c.autonomousShoppingEnabled === undefined) c.autonomousShoppingEnabled = false;
+        if (c.characterOwnWalletShoppingEnabled === undefined) c.characterOwnWalletShoppingEnabled = true;
+        if (c.characterFamilyCardSpendingEnabled === undefined) c.characterFamilyCardSpendingEnabled = false;
+        if (c.characterSelfShoppingEnabled === undefined) c.characterSelfShoppingEnabled = true;
+        if (c.characterGiftShoppingEnabled === undefined) c.characterGiftShoppingEnabled = true;
+        if (c.characterPayRequestEnabled === undefined) c.characterPayRequestEnabled = true;
+        if (c.characterShoppingSingleLimit === undefined) c.characterShoppingSingleLimit = 200;
+        if (c.characterShoppingPeriodBudget === undefined) c.characterShoppingPeriodBudget = 1000;
+        if (c.characterShoppingFrequency === undefined) c.characterShoppingFrequency = 'rare';
+        if (c.characterShoppingAllowedCategories === undefined) c.characterShoppingAllowedCategories = '';
         if (c.isBlockedByChar === undefined) c.isBlockedByChar = false;
         if (c.blockedByCharAt === undefined) c.blockedByCharAt = null;
         if (c.blockedByCharReason === undefined) c.blockedByCharReason = '';
@@ -697,6 +759,11 @@ const dataStorage = {
         categorizedSizes.worldAndForum += await measure(db.worldBooks);
         categorizedSizes.worldAndForum += await measure(db.forumPosts);
         categorizedSizes.worldAndForum += await measure(db.forumBindings);
+        categorizedSizes.worldAndForum += await measure(db.forumMessages);
+        categorizedSizes.worldAndForum += await measure(db.forumStrangerProfiles);
+        categorizedSizes.worldAndForum += await measure(db.forumRelationships);
+        categorizedSizes.worldAndForum += await measure(db.forumKnowledge);
+        categorizedSizes.worldAndForum += await measure(db.forumEvents);
 
         // 4. Personalization
         categorizedSizes.personalization += await measure(db.myStickers);

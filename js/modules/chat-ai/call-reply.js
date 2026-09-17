@@ -14,6 +14,10 @@ function extractCallResponseText(payload, provider, useDelta = false) {
     if (Array.isArray(payload)) {
         return payload.map(item => extractCallResponseText(item, provider, useDelta)).join('');
     }
+    if (typeof extractAiProviderResponse === 'function') {
+        const normalized = extractAiProviderResponse(payload, provider, useDelta);
+        if (normalized.content) return normalized.content;
+    }
 
     const geminiText = (payload.candidates || []).map(candidate => {
         const parts = candidate && candidate.content && candidate.content.parts;
@@ -130,12 +134,15 @@ async function readCallStreamResponse(response, provider) {
 }
 
 async function getCallReply(chat, callType, callContext, onStreamUpdate, options = {}) {
-    let {url, key, model, provider, streamEnabled} = db.apiSettings;
+    const callFeature = typeof VideoCallModule !== 'undefined' && VideoCallModule.state.realCameraActive && VideoCallModule.state.lastCapturedFrame ? 'callVision' : 'call';
+    const apiConfig = typeof getApiConfigForFeature === 'function' ? getApiConfigForFeature(callFeature, db.apiSettings) : db.apiSettings;
+    let {url, key, model, provider, streamEnabled} = apiConfig;
+    if (streamEnabled === undefined) streamEnabled = !!db.apiSettings?.streamEnabled;
     
     // 【用户设置】移除强制关闭流式，允许后台流式生成
     // streamEnabled = false; 
 
-    if (!url || !key || !model) {
+    if (typeof isApiConfigReady === 'function' ? !isApiConfigReady(apiConfig) : (!url || !key || !model)) {
         showToast('请先在“api”应用中完成设置！');
         return;
     }
@@ -347,9 +354,10 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate, options
     }
     const cotEnabled = useCharCot ? chat.cotSettings.callEnabled : (db.cotSettings && db.cotSettings.callEnabled);
     
-    if (cotEnabled) {
+    const activePresetId = useCharCot ? (chat.cotSettings.activeCallPresetId || 'default_call') : ((db.cotSettings && db.cotSettings.activeCallPresetId) || 'default_call');
+    const hasExplicitCotPolicy = !!db.cotSettings?.modePolicies?.call?.runMode;
+    if (cotEnabled && !hasExplicitCotPolicy) {
         let cotInstruction = '';
-        const activePresetId = useCharCot ? (chat.cotSettings.activeCallPresetId || 'default_call') : ((db.cotSettings && db.cotSettings.activeCallPresetId) || 'default_call');
         const preset = (db.cotPresets || []).find(p => p.id === activePresetId);
         
         if (preset && preset.items) {
@@ -385,53 +393,43 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate, options
     // ===============================
 
     // 3. 发起请求
-    const outgoingMessages = normalizeMessagesForProvider(messages, provider);
-    const requestBody = {
+    let configuredMessages = messages;
+    let activeCotRuntime = null;
+    if (typeof applyConfiguredCotPolicy === 'function') {
+        activeCotRuntime = await applyConfiguredCotPolicy(messages, { mode: 'call', scope: 'call', provider, model, nodeId: apiConfig._nodeId || '', presetId: activePresetId, cotEnabled, quickReply: !!db.apiSettings?.quickReplyEnabled });
+        configuredMessages = activeCotRuntime.messages;
+        chat._cotDisplayMode = activeCotRuntime.displayMode || '';
+        chat._cotTagStart = activeCotRuntime.tagMode === 'on' ? activeCotRuntime.tagStart : '';
+        chat._cotTagEnd = activeCotRuntime.tagMode === 'on' ? activeCotRuntime.tagEnd : '';
+    }
+    const outgoingMessages = normalizeMessagesForProvider(configuredMessages, provider);
+    let requestBody = {
         model: model,
         messages: outgoingMessages,
         stream: streamEnabled,
         temperature: 0.7 // 通话稍微低一点，保持稳定
     };
-
-    // 适配 Gemini
-    if (provider === 'gemini') {
-         const contents = messages.filter(m => m.role !== 'system').map(m => {
-            const role = m.role === 'assistant' ? 'model' : 'user';
-            let parts;
-            if (Array.isArray(m.content)) {
-                // 多模态消息（文本+图片）
-                parts = m.content.map(p => {
-                    if (p.type === 'text') return { text: p.text };
-                    if (p.type === 'image_url' && p.image_url && p.image_url.url) {
-                        const match = p.image_url.url.match(/^data:(image\/(.+));base64,(.*)$/);
-                        if (match) return { inline_data: { mime_type: match[1], data: match[3] } };
-                    }
-                    return null;
-                }).filter(Boolean);
-            } else {
-                parts = [{ text: m.content }];
-            }
-            return { role, parts };
-        });
-        requestBody.contents = contents;
-        
-        // 合并所有 system 消息到 system_instruction
-        const allSystemPrompts = messages.filter(m => m.role === 'system').map(m => m.content).join('\n\n');
-        requestBody.system_instruction = {parts: [{text: allSystemPrompts}]};
-        requestBody.generationConfig = { temperature: requestBody.temperature };
-        
-        delete requestBody.messages;
-        delete requestBody.model;
-        delete requestBody.stream;
-        delete requestBody.temperature;
-    }
+    if (activeCotRuntime?.nativeThinking) requestBody.__ovoThinking = activeCotRuntime.nativeThinking;
 
     const geminiMethod = streamEnabled ? 'streamGenerateContent' : 'generateContent';
-    const endpoint = (provider === 'gemini') ? `${url}/v1beta/models/${model}:${geminiMethod}?key=${getRandomValue(key)}` : `${url}/v1/chat/completions`;
-    const headers = (provider === 'gemini') ? {'Content-Type': 'application/json'} : {
+    let endpoint = (provider === 'gemini') ? `${url}/v1beta/models/${model}:${geminiMethod}?key=${getRandomValue(key)}` : `${url}/v1/chat/completions`;
+    let headers = (provider === 'gemini') ? {'Content-Type': 'application/json'} : {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${key}`
     };
+    const unpreparedRequestBody = JSON.parse(JSON.stringify(requestBody));
+    const fallbackBody = provider === 'gemini' ? {
+        contents: configuredMessages.filter(message => message.role !== 'system').map(message => ({
+            role: message.role === 'assistant' ? 'model' : 'user',
+            parts: Array.isArray(message.content) ? message.content.map(part => part.type === 'text' ? { text: part.text } : part).filter(Boolean) : [{ text: message.content }]
+        })),
+        system_instruction: { parts: [{ text: configuredMessages.filter(message => message.role === 'system').map(message => message.content).join('\n\n') }] },
+        generationConfig: { temperature: requestBody.temperature }
+    } : requestBody;
+    const preparedRequest = typeof prepareAiProviderRequest === 'function'
+        ? prepareAiProviderRequest(apiConfig, requestBody, headers, endpoint, streamEnabled)
+        : { body: fallbackBody, headers, endpoint, provider };
+    requestBody = preparedRequest.body; headers = preparedRequest.headers; endpoint = preparedRequest.endpoint; provider = preparedRequest.provider;
 
     console.log('[VideoCall] Request:', {
         provider,
@@ -443,21 +441,43 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate, options
     });
 
     try {
-        const response = await fetch(endpoint, {
+        const sendPrepared = (targetEndpoint, targetHeaders, targetBody) => fetch(targetEndpoint, {
             method: 'POST',
-            headers: headers,
-            body: JSON.stringify(requestBody),
+            headers: targetHeaders,
+            body: JSON.stringify(targetBody),
             signal: options.signal
         });
+        let response = await sendPrepared(endpoint, headers, requestBody);
 
         if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`API Error: ${response.status} ${errorText}`);
+            let failureMode = activeCotRuntime?.prefillFailure;
+            if (response.status === 400 && failureMode === 'ask') failureMode = await resolveCotPerRequestChoice('预填不兼容处理', ['retry_without', 'retry_simulated', 'error']);
+            if (response.status === 400 && (failureMode === 'retry_without' || failureMode === 'retry_simulated')) {
+                const retryBody = JSON.parse(JSON.stringify(unpreparedRequestBody));
+                const retryLast = retryBody.messages && retryBody.messages[retryBody.messages.length - 1];
+                if (retryLast?.role === 'assistant') retryBody.messages.pop();
+                if (failureMode === 'retry_simulated') retryBody.messages.push({ role: 'user', content: activeCotRuntime.simulatedPrefillContent });
+                const retryPrepared = prepareAiProviderRequest(apiConfig, retryBody, getApiConfigHeaders(apiConfig), getApiConfigEndpoint(apiConfig, streamEnabled), streamEnabled);
+                response = await sendPrepared(retryPrepared.endpoint, retryPrepared.headers, retryPrepared.body);
+                provider = retryPrepared.provider;
+            }
+            if (!response.ok) {
+                const fallbacks = typeof getApiFallbackConfigsForFeature === 'function' ? getApiFallbackConfigsForFeature(callFeature, apiConfig._nodeId || '') : [];
+                for (const fallbackConfig of fallbacks) {
+                    const fallbackPrepared = prepareAiProviderRequest(fallbackConfig, unpreparedRequestBody, getApiConfigHeaders(fallbackConfig), getApiConfigEndpoint(fallbackConfig, streamEnabled), streamEnabled);
+                    response = await sendPrepared(fallbackPrepared.endpoint, fallbackPrepared.headers, fallbackPrepared.body);
+                    if (response.ok) { provider = fallbackPrepared.provider; break; }
+                }
+            }
+            if (!response.ok) throw new Error(`API Error: ${response.status} ${await response.text()}`);
         }
 
         if (!streamEnabled) {
             const data = await response.json();
-            let text = extractCallResponseText(data, provider, false);
+            const extracted = typeof extractAiProviderResponse === 'function' ? extractAiProviderResponse(data, provider) : { content: '', reasoning: '' };
+            let text = extracted.content || extractCallResponseText(data, provider, false);
+            if (extracted.reasoning) text = `<thinking>${extracted.reasoning}</thinking>\n${text}`;
+            if (chat._cotTagStart && chat._cotTagEnd && chat._cotTagStart !== '<thinking>') text = text.split(chat._cotTagStart).join('<thinking>').split(chat._cotTagEnd).join('</thinking>');
             if (!text && provider !== 'gemini' && (!data.choices || !data.choices.length)) {
                 console.error("Invalid API Response Structure:", {
                     provider,
@@ -499,6 +519,7 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate, options
         } else {
             console.log('[VideoCall] Stream started (Background Mode)...');
             let buffer = await readCallStreamResponse(response, provider);
+            if (chat._cotTagStart && chat._cotTagEnd && chat._cotTagStart !== '<thinking>') buffer = buffer.split(chat._cotTagStart).join('<thinking>').split(chat._cotTagEnd).join('</thinking>');
 
             console.log('[VideoCall] Stream collected:', { provider, textLength: buffer.length });
 
@@ -547,9 +568,10 @@ async function generateCallSummary(chat, callContext) {
     } else {
         apiConfig = db.apiSettings;
     }
+    apiConfig = typeof getApiConfigForFeature === 'function' ? getApiConfigForFeature('summary', apiConfig) : apiConfig;
     
     let {url, key, model, provider} = apiConfig;
-    if (!url || !key || !model) return null;
+    if (typeof isApiConfigReady === 'function' ? !isApiConfigReady(apiConfig) : (!url || !key || !model)) return null;
     if (url.endsWith('/')) url = url.slice(0, -1);
 
     // 获取世界书（包含全局）
@@ -598,12 +620,6 @@ async function generateCallSummary(chat, callContext) {
         messages: messages,
         stream: false
     };
-    
-    if (provider === 'gemini') {
-         requestBody.contents = [{role: 'user', parts: [{text: prompt}]}];
-         delete requestBody.messages;
-    }
-
     const endpoint = (provider === 'gemini') ? `${url}/v1beta/models/${model}:generateContent?key=${getRandomValue(key)}` : `${url}/v1/chat/completions`;
     const headers = (provider === 'gemini') ? {'Content-Type': 'application/json'} : {
         'Content-Type': 'application/json',
@@ -611,19 +627,7 @@ async function generateCallSummary(chat, callContext) {
     };
 
     try {
-        const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(requestBody)
-        });
-        const data = await response.json();
-        let text = "";
-        if (provider === 'gemini') {
-            text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        } else {
-            text = data.choices[0].message.content;
-        }
-        return text.trim();
+        return (await fetchAiResponse(apiConfig, requestBody, headers, endpoint, false)).trim();
     } catch (e) {
         console.error("Summary API Error:", e);
         return null;

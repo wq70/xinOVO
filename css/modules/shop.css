@@ -791,7 +791,7 @@
     justify-content: space-between;
     align-items: center;
     background-color: #fff;
-    padding-bottom: max(20px, env(safe-area-inset-bottom));
+    padding-bottom: max(20px, var(--ovo-safe-area-bottom));
 }
 
 .cart-total-price {

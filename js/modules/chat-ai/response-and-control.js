@@ -177,7 +177,15 @@ function executePhoneControlCommands(text, controllingChar) {
 
 async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false) {
     const rawResponse = fullResponse;
+    const saveReplyTargetChat = async () => {
+        if (targetChatType === 'group' && typeof saveGroup === 'function') return saveGroup(targetChatId);
+        if (targetChatType === 'private' && typeof saveCharacter === 'function') return saveCharacter(targetChatId);
+        if (typeof saveCurrentChat === 'function' && currentChatId === targetChatId && currentChatType === targetChatType) return saveCurrentChat();
+    };
     if (fullResponse) {
+        if (chat._cotTagStart && chat._cotTagEnd && chat._cotTagStart !== '<thinking>') {
+            fullResponse = fullResponse.split(chat._cotTagStart).join('<thinking>').split(chat._cotTagEnd).join('</thinking>');
+        }
         // 1. 移除 [incipere] 标签
         fullResponse = fullResponse.replace(/\[incipere\]/g, "");
 
@@ -219,7 +227,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
             const avatarResult = window.AvatarSystem.parseAvatarCommands(fullResponse, targetChatId);
             fullResponse = avatarResult.cleaned;
             if (avatarResult.actions.length > 0) {
-                window.AvatarSystem.executeAvatarActions(avatarResult.actions, targetChatId);
+                await window.AvatarSystem.executeAvatarActions(avatarResult.actions, targetChatId);
             }
         }
 
@@ -227,7 +235,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
         const thinkingMatch = fullResponse.match(/<thinking>([\s\S]*)<\/thinking>/);
         if (thinkingMatch) {
             const thinkingContent = thinkingMatch[0]; // 包含标签的完整内容
-            
+            if (chat._cotDisplayMode !== 'hidden') {
             // 创建思考过程消息对象
             const thinkingMsg = {
                 id: `msg_${Date.now()}_${Math.random()}`,
@@ -235,7 +243,8 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                 content: thinkingContent,
                 timestamp: Date.now(),
                 isThinking: true,
-                isContextDisabled: true // 【关键】标记为不进入上下文
+                isContextDisabled: true, // 【关键】标记为不进入上下文
+                thinkingDisplay: chat._cotDisplayMode || ''
             };
             
             // 存入历史记录
@@ -260,7 +269,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
             
             // 添加到界面气泡（由于 regex 设置，会被隐藏，仅 Debug 模式可见）
             addMessageBubble(thinkingMsg, targetChatId, targetChatType);
-            
+            }
             // 从即将显示的文本中移除思考内容
             fullResponse = fullResponse.replace(thinkingContent, "");
         }
@@ -365,6 +374,10 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
 
             if (targetChatType === 'private') {
                 const char = db.characters.find(c => c.id === targetChatId);
+                if (char && char.characterPayRequestEnabled === false && /\[.*?向.*?发起了代付请求[：:]/.test(item.content)) {
+                    console.warn('[WalletSystem] 已拦截角色设置禁止的代付请求');
+                    continue;
+                }
                 // 解析隐藏的 [char-action:block-user|reason:xxx]，触发角色拉黑用户（仅当角色开启 canBlockUser 时）
                 if (char && char.canBlockUser !== false) {
                     const blockUserMatch = item.content.match(/\[char-action:block-user\|reason:([^\]]*)\]/);
@@ -444,7 +457,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                             chat.useCustomBubbleCss = true;
                             char.currentBubbleCssPresetName = preset.name;
                             if (typeof updateCustomBubbleStyle === 'function') updateCustomBubbleStyle(targetChatId, preset.css, true);
-                            if (typeof saveCurrentChat === 'function') await saveCurrentChat();
+                            await saveReplyTargetChat();
                             contentAfterStrip = contentAfterStrip.replace(themeSwitchMatch[0], '').replace(/\n{3,}/g, '\n\n').trim();
                         }
                     }
@@ -507,7 +520,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                     message.isWithdrawn = true;
                     message.content = `[${characterName}撤回了一条消息：${originalContent}]`;
                     
-                    await saveCurrentChat();
+                    await saveReplyTargetChat();
                     
                     if ((targetChatType === 'private' && currentChatId === chat.id) || 
                         (targetChatType === 'group' && currentChatId === chat.id)) {
@@ -623,15 +636,18 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                         else if (periodStr.indexOf('每周') !== -1) refreshPeriod = 'weekly';
                         else if (periodStr.indexOf('每月') !== -1) refreshPeriod = 'monthly';
                         else { const d = parseInt(periodStr, 10); if (!isNaN(d) && d > 0) { refreshPeriod = 'custom'; refreshDays = d; } }
-                        const existingCard = (db.piggyBank && db.piggyBank.receivedFamilyCards) ? db.piggyBank.receivedFamilyCards.find(c => c.fromCharId === character.id && c.status === 'active') : null;
-                        if (existingCard) {
-                            existingCard.status = 'revoked';
-                            existingCard.statusChangedBy = 'system_replaced';
-                        }
                         if (typeof createReceivedFamilyCard === 'function') {
-                            const card = createReceivedFamilyCard({ fromCharId: character.id, fromCharName: character.realName || '', limit, refreshPeriod, refreshDays });
+                            const card = createReceivedFamilyCard({ fromCharId: character.id, fromCharName: character.realName || '', limit, refreshPeriod, refreshDays, status: 'pending' });
                             message.receivedFamilyCardId = card.id;
                             message.receivedFamilyCardStatus = 'pending';
+                        }
+                    }
+
+                    if (window.WalletSystem && typeof window.WalletSystem.executeCharacterPurchase === 'function') {
+                        const purchaseResult = await window.WalletSystem.executeCharacterPurchase(character, message);
+                        if (purchaseResult && !purchaseResult.ok) {
+                            message.shopPaymentStatus = 'failed';
+                            message.shopPaymentError = purchaseResult.reason || '订单未完成';
                         }
                     }
 
@@ -756,7 +772,10 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
             addMessageBubble(summaryMsg, targetChatId, targetChatType);
         }
 
-        await saveCurrentChat();
+        await saveReplyTargetChat();
+        if (window.WalletSystem && typeof window.WalletSystem.persist === 'function') {
+            await window.WalletSystem.persist([targetChatId]);
+        }
         renderChatList();
 
         if (targetChatType === 'private' && (chat.source === 'forum' || chat.source === 'peek') && chat.supplementPersonaAiEnabled) {

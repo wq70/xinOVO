@@ -1,5 +1,5 @@
-async function getAiReply(chatId, chatType, isBackground = false, isSummary = false, isCharBlockedMonologue = false, isPhoneControlRevokeAttempt = false) {
-    if (isGenerating && !isBackground) return;
+async function getAiReply(chatId, chatType, isBackground = false, isSummary = false, isCharBlockedMonologue = false, isPhoneControlRevokeAttempt = false, replyOptions = {}) {
+    if (isGenerating && !isBackground && !replyOptions.recoveryTaskId) return;
 
     // 拉黑检查：被拉黑的角色不回复（角色拉黑用户后的「让TA说说」不在此列）
     if (chatType === 'private' && !isCharBlockedMonologue) {
@@ -10,7 +10,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
     // 免打扰时段检查：后台消息在免打扰时段内直接跳过
     if (isBackground && isInQuietHours(chatId)) return;
 
-    if (!isBackground) {
+    if (!isBackground && !replyOptions.recoveryTaskId) {
         if (db.globalSendSound) {
             playSound(db.globalSendSound);
         } else {
@@ -31,11 +31,14 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
         // 默认使用主API
         apiConfig = db.apiSettings;
     }
+    const routeChat = chatType === 'private' ? db.characters.find(item => item.id === chatId) : db.groups.find(item => item.id === chatId);
+    const apiFeature = isSummary ? 'summary' : isBackground ? 'background' : (!isSummary && !isBackground && chatType === 'private' && routeChat?.webSearchEnabled ? 'webSearch' : (chatType === 'group' ? 'groupChat' : 'chat'));
+    apiConfig = typeof getApiConfigForFeature === 'function' ? getApiConfigForFeature(apiFeature, apiConfig) : apiConfig;
     
     let {url, key, model, provider} = apiConfig;
-    let streamEnabled = db.apiSettings.streamEnabled; // 流式输出始终使用主API的设置
+    let streamEnabled = apiConfig.streamEnabled !== undefined ? apiConfig.streamEnabled : db.apiSettings.streamEnabled;
     
-    if (!url || !key || !model) {
+    if (typeof isApiConfigReady === 'function' ? !isApiConfigReady(apiConfig) : (!url || !key || !model)) {
         if (!isBackground) {
             showToast('请先在“api”应用中完成设置！');
             switchScreen('api-settings-screen');
@@ -56,9 +59,44 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
 
     const chat = (chatType === 'private') ? db.characters.find(c => c.id === chatId) : db.groups.find(g => g.id === chatId);
     if (!chat) return;
+    const latestTurnProtectionEnabled = !isBackground && !isSummary && !!db.apiSettings?.latestTurnProtectionEnabled;
+    let latestTurnIds = [];
+    const recordLatestTurnProtectionCheck = check => {
+        try {
+            const entries = JSON.parse(localStorage.getItem('ovo_latest_turn_protection_log_v1') || '[]');
+            entries.push({ at: Date.now(), chatId, requestId: replyTask?.id || '', latestTurnIds, valid: check.valid, protectedCount: check.protectedCount, missingIds: check.missingIds, roles: check.roles });
+            localStorage.setItem('ovo_latest_turn_protection_log_v1', JSON.stringify(entries.slice(-50)));
+        } catch (_) { /* diagnostics must not affect chat */ }
+    };
+    let replyTask = null;
+    const resilienceEnabled = !isSummary && window.ReplyResilience;
+    let requestAbortController = null;
+    const persistTargetChat = async () => {
+        if (chatType === 'group' && typeof saveGroup === 'function') return saveGroup(chatId);
+        if (chatType === 'private' && typeof saveCharacter === 'function') return saveCharacter(chatId);
+        if (typeof saveCurrentChat === 'function' && currentChatId === chatId && currentChatType === chatType) return saveCurrentChat();
+    };
+    const finalizeReply = async (fullResponse) => {
+        if (!String(fullResponse || '').trim()) {
+            const emptyError = new Error('接口未返回可用的回复内容');
+            emptyError.name = 'EmptyReplyError';
+            throw emptyError;
+        }
+        if (replyTask) await window.ReplyResilience.markFinalizing(replyTask, fullResponse);
+        const historyLengthBefore = Array.isArray(chat.history) ? chat.history.length : 0;
+        await handleAiReplyContent(fullResponse, chat, chatId, chatType, isBackground, isCharBlockedMonologue);
+        if (replyTask && Array.isArray(chat.history)) {
+            chat.history.slice(historyLengthBefore).forEach(message => {
+                if (message && !message.replyRequestId) message.replyRequestId = replyTask.id;
+            });
+            await persistTargetChat();
+            await window.ReplyResilience.complete(replyTask);
+        }
+    };
 
     if (!isBackground) {
         currentReplyAbortController = new AbortController();
+        requestAbortController = currentReplyAbortController;
         isGenerating = true;
         getReplyBtn.disabled = true;
         regenerateBtn.disabled = true;
@@ -66,6 +104,28 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
         typingIndicator.textContent = `“${typingName}”正在输入中...`;
         typingIndicator.style.display = 'block';
         messageArea.scrollTop = messageArea.scrollHeight;
+    } else {
+        // 后台请求使用独立 controller，避免前台中止或其他角色请求串线。
+        requestAbortController = new AbortController();
+    }
+
+    if (resilienceEnabled) {
+        try {
+            const latestUserMessage = [...(chat.history || [])].reverse().find(message => message && message.role === 'user' && !message.excludeFromContext);
+            replyTask = await window.ReplyResilience.begin({
+                chatId,
+                chatType,
+                userMessageId: latestUserMessage ? latestUserMessage.id : '',
+                provider,
+                model,
+                streamEnabled,
+                isBackground: !!isBackground,
+                recoveryTaskId: replyOptions.recoveryTaskId || '',
+                initialState: 'preparing'
+            });
+        } catch (resilienceError) {
+            console.warn('[ReplyResilience] could not persist request start:', resilienceError);
+        }
     }
 
     try {
@@ -162,6 +222,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             if (m.content && typeof m.content === 'string' && m.content.trim().startsWith('<thinking>')) return false;
             return true;
         });
+        if (latestTurnProtectionEnabled) latestTurnIds = getLatestConversationTurnIds(historySlice);
 
         let weatherText = '';
         if (chatType === 'private' && window.WeatherService) {
@@ -193,6 +254,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
         // 检查是否开启了后台自动识图
         if (db.imageRecognitionEnabled) {
             let descApiConfig = (db.imageRecognitionApiSettings && db.imageRecognitionApiSettings.url && db.imageRecognitionApiSettings.key && db.imageRecognitionApiSettings.model) ? db.imageRecognitionApiSettings : db.apiSettings;
+            descApiConfig = typeof getApiConfigForFeature === 'function' ? getApiConfigForFeature('imageChat', descApiConfig) : descApiConfig;
             
             // 从后往前找，只看开启之后的轮数（只找最新的一条用户消息）
             let lastUserMsg = null;
@@ -261,6 +323,8 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                         if (p.type === 'text' || p.type === 'html') {
                             return {text: p.text};
                         } else if (p.type === 'image') {
+                            if (apiConfig.imageMode === 'reject') return {text: '[图片未发送：当前节点被用户设为不接收图片]'};
+                            if (apiConfig.imageMode === 'description') return {text: p.description ? `[图片描述：${p.description}]` : '[图片：尚无可用描述]'};
                             if (p.description) {
                                 return {text: `[图片描述：${p.description}]`};
                             } else {
@@ -328,7 +392,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                     parts[0].text = '[id:' + msg.id + ']\n' + parts[0].text;
                 }
 
-                return { role, parts };
+                return { role, parts, ...(latestTurnProtectionEnabled && msg.id ? { __ovoMessageId: msg.id } : {}) };
             });
 
             if (contents.length > 0 && contents[contents.length - 1].role === 'model' && !isBackground && !isCharBlockedMonologue) {
@@ -376,7 +440,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                 }
             }
         } else {
-            const messages = [{role: 'system', content: systemPrompt}];
+            let messages = [{role: 'system', content: systemPrompt}];
             
             let lastMsgTimeForAI = 0;
             
@@ -414,6 +478,17 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                                prefixAdded = true;
                                return {type: 'text', text: textContent};
                            } else if (p.type === 'image') {
+                               const imageMode = apiConfig.imageMode || '';
+                               if (imageMode === 'reject') {
+                                   const textContent = (!prefixAdded ? prefix : '') + '[图片未发送：当前节点被用户设为不接收图片]';
+                                   prefixAdded = true;
+                                   return {type: 'text', text: textContent};
+                               }
+                               if (imageMode === 'description') {
+                                   const textContent = (!prefixAdded ? prefix : '') + (p.description ? `[图片描述：${p.description}]` : '[图片：尚无可用描述]');
+                                   prefixAdded = true;
+                                   return {type: 'text', text: textContent};
+                               }
                                if (p.description) {
                                    // 即便有描述，也同时把原图发给模型（如果模型支持的话）
                                    const textContent = (!prefixAdded) ? (prefix + `[图片描述：${p.description}]`) : `[图片描述：${p.description}]`;
@@ -486,9 +561,9 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                const role = (msg.role === 'assistant' || msg.role === 'char') ? 'assistant' : 'user';
                
                if (Array.isArray(content) && content.every(c => c.type === 'text')) {
-                   messages.push({ role: role, content: content.map(c => c.text).join('') });
-               } else {
-                   messages.push({ role: role, content: content });
+                    messages.push({ role: role, content: content.map(c => c.text).join(''), ...(latestTurnProtectionEnabled && msg.id ? { __ovoMessageId: msg.id } : {}) });
+                } else {
+                    messages.push({ role: role, content: content, ...(latestTurnProtectionEnabled && msg.id ? { __ovoMessageId: msg.id } : {}) });
                }
             });
 
@@ -556,7 +631,9 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                 }
             }
             
-            if (cotEnabled) {
+            const cotPolicyMode = isOfflineNode ? 'offline' : 'chat';
+            const hasExplicitCotPolicy = !!db.cotSettings?.modePolicies?.[cotPolicyMode]?.runMode;
+            if (cotEnabled && !hasExplicitCotPolicy) {
                 let cotInstruction = '';
                 const preset = (db.cotPresets || []).find(p => p.id === activePresetId);
                 
@@ -591,6 +668,23 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                 }
             }
 
+        if (typeof applyConfiguredCotPolicy === 'function') {
+            const configured = await applyConfiguredCotPolicy(messages, {
+                mode: isOfflineNode ? 'offline' : 'chat', provider, model, nodeId: apiConfig._nodeId || '',
+                presetId: activePresetId, cotEnabled, quickReply: !!db.apiSettings?.quickReplyEnabled,
+                scope: isBackground ? 'background' : (chatType === 'group' ? 'group' : 'chat')
+            });
+            messages = configured.messages;
+            var activeCotRuntime = configured;
+            chat._cotDisplayMode = configured.displayMode || '';
+            chat._cotTagStart = configured.tagMode === 'on' ? configured.tagStart : '';
+            chat._cotTagEnd = configured.tagMode === 'on' ? configured.tagEnd : '';
+        }
+        if (latestTurnProtectionEnabled && latestTurnIds.length) {
+            const protectedTurn = protectLatestConversationTurn(messages, latestTurnIds);
+            messages = protectedTurn.messages;
+            if (protectedTurn.protectedCount !== latestTurnIds.length) throw new Error('最新轮次保护失败：当前用户消息在请求组装阶段缺失');
+        }
         const outgoingMessages = normalizeMessagesForProvider(messages, provider);
         requestBody = {
             model: model, 
@@ -598,6 +692,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             stream: streamEnabled,
             temperature: db.apiSettings.temperature !== undefined ? db.apiSettings.temperature : 1.0
         };
+        if (activeCotRuntime?.nativeThinking) requestBody.__ovoThinking = activeCotRuntime.nativeThinking;
         
         // --- 联网搜索支持 (仅为主聊天 API 请求启用) ---
         if (!isBackground && !isSummary && chatType === 'private' && chat.webSearchEnabled) {
@@ -623,12 +718,66 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             }
         }
         }
+        if (provider === 'gemini' && db.cotSettings?.modePolicies) {
+            let geminiCotMode = 'chat';
+            if (chatType === 'private' && chat.activeNodeId && chat.nodes) {
+                const activeNode = chat.nodes.find(node => node.id === chat.activeNodeId);
+                const baseMode = activeNode?.customConfig?.baseMode || (activeNode?.type === 'offline' || (activeNode?.type === 'spinoff' && activeNode?.spinoffMode === 'offline') ? 'offline' : 'online');
+                if (baseMode === 'offline') geminiCotMode = 'offline';
+            }
+            const geminiPolicy = db.cotSettings.modePolicies[geminiCotMode];
+            if (geminiPolicy?.runMode) {
+                const charCot = chatType === 'private' && chat.cotSettings?.enabled ? chat.cotSettings : null;
+                const geminiCotEnabled = geminiCotMode === 'offline' ? (charCot ? charCot.offlineEnabled : db.cotSettings.offlineEnabled) : (charCot ? charCot.chatEnabled : db.cotSettings.enabled);
+                const presetId = geminiCotMode === 'offline' ? (charCot?.activeOfflinePresetId || db.cotSettings.activeOfflinePresetId || 'default_offline') : (charCot?.activePresetId || db.cotSettings.activePresetId || 'default');
+                const systemText = requestBody.system_instruction?.parts?.map(part => part.text || '').join('\n') || requestBody.systemInstruction?.parts?.map(part => part.text || '').join('\n') || '';
+                const pseudoMessages = systemText ? [{ role: 'system', content: systemText }] : [];
+                (requestBody.contents || []).forEach(content => {
+                    pseudoMessages.push({ role: content.role === 'model' ? 'assistant' : 'user', ...(content.__ovoMessageId ? { __ovoMessageId: content.__ovoMessageId } : {}), content: (content.parts || []).map(part => {
+                        if (part.text !== undefined) return { type: 'text', text: part.text };
+                        const inline = part.inline_data || part.inlineData;
+                        if (inline) return { type: 'image_url', image_url: { url: `data:${inline.mime_type || inline.mimeType};base64,${inline.data}` } };
+                        return { type: 'text', text: '' };
+                    }) });
+                });
+                activeCotRuntime = await applyConfiguredCotPolicy(pseudoMessages, { mode: geminiCotMode, scope: isBackground ? 'background' : (chatType === 'group' ? 'group' : 'chat'), provider, model, nodeId: apiConfig._nodeId || '', presetId, cotEnabled: geminiCotEnabled, quickReply: !!db.apiSettings?.quickReplyEnabled });
+                if (latestTurnProtectionEnabled && latestTurnIds.length) {
+                    const protectedTurn = protectLatestConversationTurn(activeCotRuntime.messages, latestTurnIds);
+                    activeCotRuntime.messages = protectedTurn.messages;
+                    if (protectedTurn.protectedCount !== latestTurnIds.length) throw new Error('最新轮次保护失败：Gemini 请求组装阶段缺少当前用户消息');
+                }
+                chat._cotDisplayMode = activeCotRuntime.displayMode || '';
+                chat._cotTagStart = activeCotRuntime.tagMode === 'on' ? activeCotRuntime.tagStart : '';
+                chat._cotTagEnd = activeCotRuntime.tagMode === 'on' ? activeCotRuntime.tagEnd : '';
+                const converted = toGeminiContents(activeCotRuntime.messages);
+                requestBody.contents = converted.contents;
+                if (converted.systemInstruction) requestBody.systemInstruction = converted.systemInstruction;
+                delete requestBody.system_instruction;
+                if (activeCotRuntime.nativeThinking) requestBody.__ovoThinking = activeCotRuntime.nativeThinking;
+            }
+        }
+        if (replyTask) {
+            replyTask.state = replyOptions.recoveryTaskId ? 'recovering' : 'requesting';
+            replyTask.provider = provider;
+            replyTask.model = model;
+            replyTask.streamEnabled = !!streamEnabled;
+            await window.ReplyResilience.flush(replyTask);
+        }
         if (!isBackground && !isSummary && window.McpChatOrchestrator && window.mcpManager) {
             const latestMcpUserMessage = [...(chat.history || [])].reverse().find(message => message && message.role === 'user' && !message.excludeFromContext);
             const mcpCatalog = window.McpChatOrchestrator.createCatalog(chat, latestMcpUserMessage);
             if (mcpCatalog.length) {
-                const signal = currentReplyAbortController ? currentReplyAbortController.signal : undefined;
+                const signal = requestAbortController ? requestAbortController.signal : undefined;
                 const initialMessages = provider === 'gemini' ? [...(requestBody.contents || [])] : [...(requestBody.messages || [])];
+                if (latestTurnProtectionEnabled && latestTurnIds.length) {
+                    const check = validateAndStripLatestTurnProtection(
+                        provider === 'gemini' ? { contents: initialMessages } : { messages: initialMessages },
+                        provider === 'gemini' ? 'gemini' : 'openai_chat',
+                        latestTurnIds
+                    );
+                    recordLatestTurnProtectionCheck(check);
+                    if (!check.valid) throw new Error('最新轮次保护校验失败：MCP 请求未以本轮用户消息作为对话触发点');
+                }
                 const sendToolAwareRequest = async input => {
                     let toolRequestBody;
                     let toolEndpoint;
@@ -686,30 +835,69 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                     };
                 };
                 const mcpResponse = await window.McpChatOrchestrator.run({ chat, messages: initialMessages, signal, send: sendToolAwareRequest });
-                await handleAiReplyContent(mcpResponse || '', chat, chatId, chatType, isBackground, isCharBlockedMonologue);
-                return;
+                if (replyTask) window.ReplyResilience.checkpoint(replyTask, mcpResponse || '', '', { state: 'finalizing' });
+                await finalizeReply(mcpResponse || '');
+                return true;
             }
         }
         console.log('[DEBUG] AutoReply Request Body:', JSON.stringify(requestBody));
-        const endpoint = (provider === 'gemini') ? `${url}/v1beta/models/${model}:streamGenerateContent?key=${getRandomValue(key)}` : `${url}/v1/chat/completions`;
-        const headers = (provider === 'gemini') ? {'Content-Type': 'application/json'} : {
+        let endpoint = (provider === 'gemini') ? `${url}/v1beta/models/${model}:streamGenerateContent?key=${getRandomValue(key)}` : `${url}/v1/chat/completions`;
+        let headers = (provider === 'gemini') ? {'Content-Type': 'application/json'} : {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${key}`
         };
-        const response = await fetch(endpoint, {
+        const unpreparedRequestBody = JSON.parse(JSON.stringify(requestBody));
+        const preparedRequest = prepareAiProviderRequest(apiConfig, requestBody, headers, endpoint, streamEnabled);
+        requestBody = preparedRequest.body; headers = preparedRequest.headers; endpoint = preparedRequest.endpoint; provider = preparedRequest.provider;
+        if (latestTurnProtectionEnabled && latestTurnIds.length) {
+            const check = validateAndStripLatestTurnProtection(requestBody, preparedRequest.protocol, latestTurnIds);
+            stripLatestTurnProtectionMetadata(unpreparedRequestBody);
+            recordLatestTurnProtectionCheck(check);
+            if (!check.valid) throw new Error('最新轮次保护校验失败：最终请求未以本轮用户消息作为对话触发点');
+        }
+        const sendPrepared = (targetEndpoint, targetHeaders, targetBody) => fetch(targetEndpoint, {
             method: 'POST',
-            headers: headers,
-            body: JSON.stringify(requestBody),
-            signal: currentReplyAbortController ? currentReplyAbortController.signal : undefined
+            headers: targetHeaders,
+            body: JSON.stringify(targetBody),
+            signal: requestAbortController ? requestAbortController.signal : undefined
         });
+        let response = await sendPrepared(endpoint, headers, requestBody);
         if (!response.ok) {
-            const error = new Error(`API Error: ${response.status} ${await response.text()}`);
-            error.response = response;
-            throw error;
+            const firstErrorText = await response.text();
+            let failureMode = activeCotRuntime?.prefillFailure;
+            if (response.status === 400 && failureMode === 'ask') {
+                failureMode = await resolveCotPerRequestChoice('预填不兼容处理', ['retry_without', 'retry_simulated', 'error']);
+            }
+            if (response.status === 400 && (failureMode === 'retry_without' || failureMode === 'retry_simulated')) {
+                const retryBody = JSON.parse(JSON.stringify(unpreparedRequestBody));
+                const last = retryBody.messages?.[retryBody.messages.length - 1];
+                if (last?.role === 'assistant') retryBody.messages.pop();
+                if (failureMode === 'retry_simulated') retryBody.messages.push({ role: 'user', content: activeCotRuntime.simulatedPrefillContent || '请遵循已配置的回复开头与格式要求。' });
+                const retryPrepared = prepareAiProviderRequest(apiConfig, retryBody, headers, endpoint, streamEnabled);
+                requestBody = retryPrepared.body; headers = retryPrepared.headers; endpoint = retryPrepared.endpoint; provider = retryPrepared.provider;
+                response = await sendPrepared(endpoint, headers, requestBody);
+            }
+            if (!response.ok) {
+                const fallbacks = typeof getApiFallbackConfigsForFeature === 'function' ? getApiFallbackConfigsForFeature(apiFeature, apiConfig._nodeId || '') : [];
+                for (const fallbackConfig of fallbacks) {
+                    const fallbackEndpoint = getApiConfigEndpoint(fallbackConfig, streamEnabled);
+                    const fallbackHeaders = getApiConfigHeaders(fallbackConfig);
+                    const fallbackPrepared = prepareAiProviderRequest(fallbackConfig, unpreparedRequestBody, fallbackHeaders, fallbackEndpoint, streamEnabled);
+                    response = await sendPrepared(fallbackPrepared.endpoint, fallbackPrepared.headers, fallbackPrepared.body);
+                    if (response.ok) { provider = fallbackPrepared.provider; break; }
+                }
+            }
+            if (!response.ok) {
+                const errorText = response.bodyUsed ? firstErrorText : await response.text();
+                const error = new Error(`API Error: ${response.status} ${errorText}`);
+                error.response = response;
+                throw error;
+            }
         }
         
         if (streamEnabled) {
-            await processStream(response, chat, provider, chatId, chatType, isBackground, isCharBlockedMonologue);
+            const streamedResponse = await processStream(response, chat, provider, chatId, chatType, isBackground, isCharBlockedMonologue, replyTask);
+            await finalizeReply(streamedResponse);
         } else {
             let result;
             try {
@@ -722,10 +910,11 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             }
 
             let fullResponse = "";
-            if (provider === 'gemini') {
-                fullResponse = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
-            } else {
-                fullResponse = result.choices[0].message.content;
+            const extracted = extractAiProviderResponse(result, provider);
+            fullResponse = extracted.content;
+            if (extracted.reasoning) {
+                chat._lastNativeReasoning = extracted.reasoning;
+                fullResponse = `<thinking>${extracted.reasoning}</thinking>\n${fullResponse}`;
             }
             
             // === 【补丁：把被吃掉的开头补回来】 ===
@@ -762,17 +951,27 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             // ===================================
             
             
-            await handleAiReplyContent(fullResponse, chat, chatId, chatType, isBackground, isCharBlockedMonologue);
+            if (replyTask) window.ReplyResilience.checkpoint(replyTask, fullResponse, extracted.reasoning || '', { state: 'finalizing' });
+            await finalizeReply(fullResponse);
         }
 
+        return true;
+
     } catch (error) {
+        if (replyTask && window.ReplyResilience) {
+            try { await window.ReplyResilience.fail(replyTask, error, error.name === 'AbortError'); } catch (_) { /* preserve original error handling */ }
+        }
         if (error.name === 'AbortError') {
             if (!isBackground && typeof showToast === 'function') showToast('已暂停调用');
         } else {
             if (!isBackground) showApiError(error);
             else console.error("Background Auto-Reply Error:", error);
         }
+        return false;
     } finally {
+        if (replyTask && window.ReplyResilience) {
+            try { await window.ReplyResilience.flush(replyTask); } catch (_) { /* best effort lifecycle checkpoint */ }
+        }
         if (!isBackground) {
             currentReplyAbortController = null;
             isGenerating = false;
@@ -786,38 +985,58 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
     }
 }
 
-async function processStream(response, chat, apiType, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false) {
+async function processStream(response, chat, apiType, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false, replyTask = null) {
     const reader = response.body.getReader(), decoder = new TextDecoder();
-    let fullResponse = "", accumulatedChunk = "";
+    let fullResponse = "", fullReasoning = "", accumulatedChunk = "";
+    const processSseBlock = block => {
+        const data = block.split(/\r?\n/)
+            .filter(line => line.startsWith('data:'))
+            .map(line => line.slice(5).replace(/^ /, ''))
+            .join('\n');
+        if (!data || data.trim() === '[DONE]') return;
+        try {
+            const extracted = extractAiProviderResponse(JSON.parse(data), apiType, true);
+            fullResponse += extracted.content;
+            fullReasoning += extracted.reasoning || '';
+        } catch (error) {
+            console.warn('[ReplyStream] ignored malformed SSE event:', error);
+        }
+    };
     for (; ;) {
         const {done, value} = await reader.read();
         if (done) break;
         accumulatedChunk += decoder.decode(value, {stream: true});
-        if (apiType === "openai" || apiType === "deepseek" || apiType === "claude" || apiType === "newapi") {
-            const parts = accumulatedChunk.split("\n\n");
+        if (apiType !== "gemini") {
+            const parts = accumulatedChunk.split(/\r?\n\r?\n/);
             accumulatedChunk = parts.pop();
-            for (const part of parts) {
-                if (part.startsWith("data: ")) {
-                    const data = part.substring(6);
-                    if (data.trim() !== "[DONE]") {
-                        try {
-                            fullResponse += JSON.parse(data).choices[0].delta?.content || "";
-                        } catch (e) { 
-                        }
-                    }
-                }
-            }
+            parts.forEach(processSseBlock);
+        }
+        if (replyTask && window.ReplyResilience) {
+            window.ReplyResilience.checkpoint(replyTask, fullResponse, fullReasoning, {
+                transportBytes: (replyTask.transportBytes || 0) + (value ? value.byteLength : 0)
+            });
         }
     }
+    accumulatedChunk += decoder.decode();
+    if (apiType !== "gemini" && accumulatedChunk.trim()) processSseBlock(accumulatedChunk);
     if (apiType === "gemini") {
         try {
             const parsedStream = JSON.parse(accumulatedChunk);
-            fullResponse = parsedStream.map(item => item.candidates?.[0]?.content?.parts?.[0]?.text || "").join('');
+            fullResponse = parsedStream.map(item => {
+                const extracted = extractAiProviderResponse(item, apiType, true);
+                fullReasoning += extracted.reasoning || '';
+                return extracted.content;
+            }).join('');
         } catch (e) {
             console.error("Error parsing Gemini stream:", e, "Chunk:", accumulatedChunk);
             if (!isBackground) showToast("解析Gemini响应失败");
-            return;
+            throw e;
         }
+    }
+    if (replyTask && window.ReplyResilience) window.ReplyResilience.checkpoint(replyTask, fullResponse, fullReasoning);
+    if (fullReasoning) {
+        chat._lastNativeReasoning = fullReasoning;
+        fullResponse = `<thinking>${fullReasoning}</thinking>\n${fullResponse}`;
     }
     // === 【补丁：补全流式输出时丢失的开头标签】 ===
     // 无论前台后台，只要是CoT开启且被预填吃掉了开头，都要补回来
@@ -853,7 +1072,7 @@ async function processStream(response, chat, apiType, targetChatId, targetChatTy
     }
 
     // ===================
-    await handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground, isCharBlockedMonologue);
+    return fullResponse;
 }
 
 /** 返回该角色在手机掌控下可见的角色与群聊（未开启角色过滤则返回全部，开启则只返回指定的角色及所在群聊） */

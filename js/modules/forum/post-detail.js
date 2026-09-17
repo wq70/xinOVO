@@ -1,5 +1,5 @@
 function getPostDisplayTime(post) {
-    if (post.timestamp) return new Date(post.timestamp).toLocaleString();
+    if (post.timestamp) return forumFormatTime(post.timestamp);
     const parts = post.id.split('_');
     if (parts[1]) return new Date(parts[1] * 1).toLocaleString();
     return '';
@@ -8,38 +8,42 @@ function getPostDisplayTime(post) {
 function renderPostDetail(post) {
     const detailScreen = document.getElementById('forum-post-detail-screen');
     if (!detailScreen || !post) return;
+    forumRememberPostVisit(post.id);
 
     const defaultAvatarUrl = 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg';
     const npcColors = ["#FFB6C1", "#87CEFA", "#98FB98", "#F0E68C", "#DDA0DD", "#FFDAB9", "#B0E0E6"];
-    const getRandomColor = () => npcColors[Math.floor(Math.random() * npcColors.length)];
+    const getStableColor = id => { let h = 0; for (let i = 0; i < String(id || '').length; i++) h = (h * 31 + String(id).charCodeAt(i)) >>> 0; return npcColors[h % npcColors.length]; };
 
     let commentsHtml = '';
     if (post.comments && post.comments.length > 0) {
         post.comments.forEach((comment, index) => {
             const firstChar = (comment.username || '').charAt(0).toUpperCase() || '?';
-            const isUserComment = comment.authorId === 'user' || (comment.authorId && comment.authorId.startsWith('alt_'));
+            const isUserComment = comment.authorId === 'user' || comment.authorId === 'main' || (comment.authorId && comment.authorId.startsWith('alt_'));
             // 只有用户发的帖子里，用户在自己帖子下的回复才显示楼主
             const isAuthor = (post.authorId === 'user' || (post.authorId && post.authorId.startsWith('alt_'))) && (comment.authorId === post.authorId);
-            const activeAcc = forumGetActiveAccount();
-            const userAvatarUrl = comment.avatar || (activeAcc.avatar) || defaultAvatarUrl;
+            const commentAccount = forumGetAccountById(comment.authorId);
+            const userAvatarUrl = comment.avatar || (commentAccount && commentAccount.avatar) || defaultAvatarUrl;
             const avatarHtml = isUserComment
-                ? `<img src="${userAvatarUrl}" class="comment-author-avatar" alt="" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
-                : `<div class="comment-author-avatar" style="background-color: ${getRandomColor()}">${firstChar}</div>`;
+                ? `<img src="${forumEscapeHtml(forumSafeImageUrl(userAvatarUrl))}" class="comment-author-avatar" alt="" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+                : `<div class="comment-author-avatar" style="background-color: ${getStableColor(comment.authorId)}">${forumEscapeHtml(firstChar)}</div>`;
             
             const authorBadge = isAuthor ? '<span class="author-badge">楼主</span>' : '';
-            const isNpcComment = comment.authorId === 'npc';
+            const isNpcComment = comment.authorId && String(comment.authorId).indexOf('npc') === 0;
             const dmBtnHtml = isNpcComment ? `<button type="button" class="btn btn-primary btn-small comment-dm-btn" data-comment-index="${index}" style="padding:3px 10px;font-size:12px;border-radius:16px;flex-shrink:0;">发私信</button>` : '';
+            const moreBtnHtml = forumAccountOwnsAuthor(comment.authorId) ? `<button type="button" class="comment-inline-btn comment-more-btn" data-comment-index="${index}">编辑</button>` : '';
             
-            const replyToHtml = comment.replyTo ? `<div class="comment-reply-ref">回复 <span class="comment-reply-ref-name">@${comment.replyTo.username || ''}</span></div>` : '';
+            const replyToHtml = comment.replyTo ? `<div class="comment-reply-ref">回复 <span class="comment-reply-ref-name">@${forumEscapeHtml(comment.replyTo.username || '')}</span></div>` : '';
             
             commentsHtml += `
             <li class="comment-item" data-comment-index="${index}">
                 ${avatarHtml}
                 <div class="comment-body">
-                    <div class="comment-author-name">${comment.username || ''}${authorBadge}${dmBtnHtml}</div>
+                    <div class="comment-author-name">${forumEscapeHtml(comment.username || '')}${authorBadge}${dmBtnHtml}</div>
                     ${replyToHtml}
-                    <div class="comment-content">${(comment.content || '').replace(/\n/g, '<br>')}</div>
-                    <div class="comment-timestamp">${comment.timestamp || ''}</div>
+                    <div class="comment-content">${forumEscapeHtml(comment.content || '').replace(/\n/g, '<br>')}</div>
+                    <div class="comment-timestamp">${forumEscapeHtml(forumFormatTime(comment.timestampMs || comment.timestamp || ''))}</div>
+                    ${comment.editedAt ? '<div class="comment-edited-mark">已编辑</div>' : ''}
+                    <div class="comment-inline-actions"><button type="button" class="comment-inline-btn comment-reply-btn" data-comment-index="${index}">回复</button>${moreBtnHtml}</div>
                 </div>
             </li>
             `;
@@ -47,14 +51,19 @@ function renderPostDetail(post) {
     }
 
     const likeCount = post.likeCount != null ? post.likeCount : 0;
-    const isLiked = !!post.isLiked;
-    const isFavorited = !!post.isFavorited;
+    const isLiked = forumGetReaction(post, 'like');
+    const isFavorited = forumGetReaction(post, 'favorite');
     const commentCount = post.comments ? post.comments.length : 0;
-    const isOwnPost = post.authorId === 'user' || (post.authorId && post.authorId.startsWith('alt_'));
+    const isOwnPost = forumAccountOwnsAuthor(post.authorId);
+    const postAccount = forumGetAccountById(post.authorId) || forumGetActiveAccount();
+    const tagHtml = (post.tags || []).length ? '<div class="forum-post-tags">' + post.tags.map(tag => '<span>#' + forumEscapeHtml(tag) + '</span>').join('') + '</div>' : '';
+    const pollVote = post.poll && post.poll.votesByAccount && post.poll.votesByAccount[forumCurrentAccountId()];
+    const pollTotal = post.poll ? post.poll.options.reduce((sum, option) => sum + (option.votes || 0), 0) : 0;
+    const pollHtml = post.poll ? '<div class="forum-poll">' + post.poll.options.map(option => '<button type="button" class="forum-poll-option' + (pollVote === option.id ? ' selected' : '') + '" data-option-id="' + forumEscapeHtml(option.id) + '"><span>' + forumEscapeHtml(option.text) + '</span><small>' + (option.votes || 0) + '票' + (pollTotal ? ' · ' + Math.round((option.votes || 0) * 100 / pollTotal) + '%' : '') + '</small></button>').join('') + '</div>' : '';
 
     const authorAvatarHtml = isOwnPost
-        ? `<img src="${forumGetActiveAccount().avatar || defaultAvatarUrl}" class="author-avatar author-avatar-img" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
-        : (() => { const authorFirstChar = (post.username || '').charAt(0).toUpperCase() || '?'; return `<div class="author-avatar" style="background-color:${getRandomColor()};color:#fff;">${authorFirstChar}</div>`; })();
+        ? `<img src="${forumEscapeHtml(forumSafeImageUrl(postAccount.avatar || defaultAvatarUrl))}" class="author-avatar author-avatar-img" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+        : (() => { const authorFirstChar = (post.username || '').charAt(0).toUpperCase() || '?'; return `<div class="author-avatar" style="background-color:${getStableColor(post.isAnonymous ? post.id : post.authorId)};color:#fff;">${forumEscapeHtml(authorFirstChar)}</div>`; })();
 
     detailScreen.innerHTML = `
     <header class="app-header">
@@ -73,16 +82,18 @@ function renderPostDetail(post) {
                     ${authorAvatarHtml}
                     <div class="author-details" style="display:flex;flex-direction:column;gap:2px;">
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-                            <span class="author-name">${post.username || ''}</span>
-                            ${!isOwnPost && post.username ? '<button type="button" class="btn btn-primary btn-small" id="forum-dm-author-btn" style="padding:4px 12px;font-size:13px;border-radius:16px;flex-shrink:0;">发私信</button>' : ''}
+                            <span class="author-name">${forumEscapeHtml(post.username || '')}</span>
+                            ${!isOwnPost && !post.isAnonymous && post.username ? '<div class="forum-author-actions"><button type="button" class="btn btn-neutral btn-small" id="forum-profile-author-btn">资料</button><button type="button" class="btn btn-neutral btn-small" id="forum-follow-author-btn">' + (forumIsFollowing(post.authorId) ? '已关注' : '关注') + '</button><button type="button" class="btn btn-primary btn-small" id="forum-dm-author-btn">私信</button></div>' : ''}
                         </div>
-                        <span class="post-meta-data">${getPostDisplayTime(post)}</span>
+                        <span class="post-meta-data">${getPostDisplayTime(post)}${post.editedAt ? ' · 已编辑' : ''}</span>
                     </div>
                 </div>
-                <h2 class="post-detail-title">${post.title || ''}</h2>
-                <div class="post-detail-content-body">${(post.content || '').replace(/\n/g, '<br>')}</div>
+                <h2 class="post-detail-title">${forumEscapeHtml(post.title || '')}</h2>
+                <div class="post-detail-content-body">${forumEscapeHtml(post.content || '').replace(/\n/g, '<br>')}</div>
+                ${tagHtml}
+                ${pollHtml}
                 <div class="post-detail-actions">
-                    <div class="action-item" id="like-post-btn" data-post-id="${post.id}" data-liked="${isLiked}" role="button" tabindex="0" style="cursor:pointer;border:none;background:none;padding:0;display:inline-flex;align-items:center;gap:4px;">
+                    <div class="action-item" id="like-post-btn" data-post-id="${forumEscapeHtml(post.id)}" data-liked="${isLiked}" role="button" tabindex="0" style="cursor:pointer;border:none;background:none;padding:0;display:inline-flex;align-items:center;gap:4px;">
                         <svg viewBox="0 0 24 24" fill="${isLiked ? '#ff4757' : 'none'}" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                         <span id="like-count">${likeCount}</span>
                     </div>
@@ -90,11 +101,11 @@ function renderPostDetail(post) {
                         <svg viewBox="0 0 24 24"><path d="M20,8H4V6H20V8M18,10H6V12H18V10M16,14H8V16H16V14M22,4V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V4A2,2 0 0,1 4,2H20A2,2 0 0,1 22,4Z" /></svg>
                         <span id="comment-count">${commentCount}</span>
                     </div>
-                    <div class="action-item" id="favorite-post-btn" data-post-id="${post.id}" data-favorited="${isFavorited}" role="button" tabindex="0" style="cursor:pointer;">
+                    <div class="action-item" id="favorite-post-btn" data-post-id="${forumEscapeHtml(post.id)}" data-favorited="${isFavorited}" role="button" tabindex="0" style="cursor:pointer;">
                         <svg viewBox="0 0 24 24" fill="${isFavorited ? '#ffd700' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
                         <span>收藏</span>
                     </div>
-                    ${isOwnPost ? `<button type="button" class="action-item" id="delete-post-btn" data-post-id="${post.id}" style="color:#ff4757;border:none;background:none;"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/></svg><span>删除</span></button>` : ''}
+                    ${isOwnPost ? `<button type="button" class="action-item" id="edit-post-btn" data-post-id="${forumEscapeHtml(post.id)}" style="border:none;background:none;"><span>编辑</span></button><button type="button" class="action-item" id="delete-post-btn" data-post-id="${forumEscapeHtml(post.id)}" style="color:#ff4757;border:none;background:none;"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/></svg><span>删除</span></button>` : ''}
                 </div>
             </div>
         </div>
@@ -128,6 +139,7 @@ function renderPostDetail(post) {
 
     const shareBtn = detailScreen.querySelector('#header-share-btn');
     if (shareBtn) shareBtn.addEventListener('click', () => openSharePostModal(post.id));
+    detailScreen.querySelectorAll('.forum-poll-option').forEach(function(button) { button.addEventListener('click', function() { if (forumVotePoll(post.id, button.dataset.optionId)) { showToast('投票成功'); renderPostDetail(post); } else { showToast('你已经选择了这个选项'); } }); });
 
     const likeBtn = detailScreen.querySelector('#like-post-btn');
     if (likeBtn) {
@@ -143,6 +155,8 @@ function renderPostDetail(post) {
 
     const deleteBtn = detailScreen.querySelector('#delete-post-btn');
     if (deleteBtn) deleteBtn.addEventListener('click', () => forumDeletePost(post.id));
+    const editBtn = detailScreen.querySelector('#edit-post-btn');
+    if (editBtn) editBtn.addEventListener('click', () => forumOpenPostEditModal(post.id));
 
     const sendCommentBtn = detailScreen.querySelector('#send-forum-comment-btn');
     const commentInput = detailScreen.querySelector('#forum-comment-input');
@@ -164,10 +178,18 @@ function renderPostDetail(post) {
     const dmAuthorBtn = detailScreen.querySelector('#forum-dm-author-btn');
     if (dmAuthorBtn && post.username && post.authorId !== 'user') {
         dmAuthorBtn.addEventListener('click', () => {
-            const userId = 'npc_' + post.username;
+            const userId = post.authorId || post.npcId || forumStableNpcId(post.username, 'post-author');
             forumOpenDMConversation(userId, post.username);
         });
     }
+    const followAuthorBtn = detailScreen.querySelector('#forum-follow-author-btn');
+    if (followAuthorBtn) followAuthorBtn.addEventListener('click', function() {
+        const followed = forumToggleFollow(post.authorId || post.npcId);
+        followAuthorBtn.textContent = followed ? '已关注' : '关注';
+        showToast(followed ? '已关注' : '已取消关注');
+    });
+    const profileAuthorBtn = detailScreen.querySelector('#forum-profile-author-btn');
+    if (profileAuthorBtn) profileAuthorBtn.addEventListener('click', function() { forumRenderNpcProfile(post.authorId || post.npcId); });
 
     // 评论者私信按钮
     detailScreen.querySelectorAll('.comment-dm-btn').forEach(btn => {
@@ -176,10 +198,12 @@ function renderPostDetail(post) {
             const idx = parseInt(btn.dataset.commentIndex, 10);
             const comment = post.comments && post.comments[idx];
             if (!comment || !comment.username) return;
-            const userId = 'npc_' + comment.username;
+            const userId = comment.authorId || comment.npcId || forumStableNpcId(comment.username, 'comment-author');
             forumOpenDMConversation(userId, comment.username, { postTitle: post.title, commentContent: comment.content });
         });
     });
+    detailScreen.querySelectorAll('.comment-reply-btn').forEach(function(btn) { btn.addEventListener('click', function() { var comment = post.comments[parseInt(btn.dataset.commentIndex, 10)]; if (!comment) return; forumReplyTarget = { commentId: comment.id, username: comment.username, content: comment.content }; renderPostDetail(post); var input = document.getElementById('forum-comment-input'); if (input) input.focus(); }); });
+    detailScreen.querySelectorAll('.comment-more-btn').forEach(function(btn) { btn.addEventListener('click', function() { var comment = post.comments[parseInt(btn.dataset.commentIndex, 10)]; if (comment) forumOpenCommentEditModal(post.id, comment.id); }); });
 
     // 回复栏关闭按钮
     const replyBarClose = detailScreen.querySelector('#forum-reply-bar-close');
@@ -244,13 +268,16 @@ function forumHandleCommentLongPress(postId, commentIndex, x, y) {
         }},
         { label: '分享评论', action: function() { openShareCommentModal(postId, commentIndex); } }
     ];
+    if (comment && forumAccountOwnsAuthor(comment.authorId)) menuItems.push({ label: '编辑评论', action: function() { forumOpenCommentEditModal(postId, comment.id); } });
     if (typeof triggerHapticFeedback === 'function') triggerHapticFeedback('medium');
     createContextMenu(menuItems, x, y);
 }
 
 function setupForumFeature() {
+    forumEnsureData();
     forumInitUserProfile();
     forumAddHeaderButtonsAndFAB();
+    forumUpdateIdentityChip();
     forumBindNewEvents();
     forumSetupAltAccountEvents();
 
@@ -303,6 +330,8 @@ function setupForumFeature() {
                         postsContainer.innerHTML = '<p class="placeholder-text" style="margin-top: 50px;">这里空空也...<br>点击右上角刷新按钮加载帖子吧！</p>';
                     }
                     forumUpdateDMUnreadBadge();
+                    forumUpdateIdentityChip();
+                    forumMaybeAutoAdvance();
                 }
             }
         }
@@ -423,10 +452,10 @@ function openSharePostModal(postId) {
             const li = document.createElement('li');
             li.className = 'binding-list-item';
             li.innerHTML = `
-                <input type="checkbox" id="share-to-${char.id}" value="${char.id}" data-share-target="character">
-                <label for="share-to-${char.id}" style="display: flex; align-items: center; gap: 10px;">
-                    <img src="${char.avatar}" alt="${char.remarkName}" style="width: 32px; height: 32px; border-radius: 50%;">
-                    ${char.remarkName}
+                <input type="checkbox" id="share-to-${forumEscapeHtml(char.id)}" value="${forumEscapeHtml(char.id)}" data-share-target="character">
+                <label for="share-to-${forumEscapeHtml(char.id)}" style="display: flex; align-items: center; gap: 10px;">
+                    <img src="${forumEscapeHtml(forumSafeImageUrl(char.avatar))}" alt="${forumEscapeHtml(char.remarkName)}" style="width: 32px; height: 32px; border-radius: 50%;">
+                    ${forumEscapeHtml(char.remarkName)}
                 </label>
             `;
             charList.appendChild(li);
@@ -439,10 +468,10 @@ function openSharePostModal(postId) {
             const li = document.createElement('li');
             li.className = 'binding-list-item';
             li.innerHTML = `
-                <input type="checkbox" id="share-to-${group.id}" value="${group.id}" data-share-target="group">
-                <label for="share-to-${group.id}" style="display: flex; align-items: center; gap: 10px;">
-                    <img src="${group.avatar}" alt="${group.name}" style="width: 32px; height: 32px; border-radius: 50%;">
-                    ${group.name}
+                <input type="checkbox" id="share-to-${forumEscapeHtml(group.id)}" value="${forumEscapeHtml(group.id)}" data-share-target="group">
+                <label for="share-to-${forumEscapeHtml(group.id)}" style="display: flex; align-items: center; gap: 10px;">
+                    <img src="${forumEscapeHtml(forumSafeImageUrl(group.avatar))}" alt="${forumEscapeHtml(group.name)}" style="width: 32px; height: 32px; border-radius: 50%;">
+                    ${forumEscapeHtml(group.name)}
                     <span style="font-size: 12px; color: #999;">[群聊]</span>
                 </label>
             `;
@@ -486,10 +515,10 @@ function openShareCommentModal(postId, commentIndex) {
             const li = document.createElement('li');
             li.className = 'binding-list-item';
             li.innerHTML = `
-                <input type="checkbox" id="share-to-${char.id}" value="${char.id}" data-share-target="character">
-                <label for="share-to-${char.id}" style="display: flex; align-items: center; gap: 10px;">
-                    <img src="${char.avatar}" alt="${char.remarkName}" style="width: 32px; height: 32px; border-radius: 50%;">
-                    ${char.remarkName}
+                <input type="checkbox" id="share-to-${forumEscapeHtml(char.id)}" value="${forumEscapeHtml(char.id)}" data-share-target="character">
+                <label for="share-to-${forumEscapeHtml(char.id)}" style="display: flex; align-items: center; gap: 10px;">
+                    <img src="${forumEscapeHtml(forumSafeImageUrl(char.avatar))}" alt="${forumEscapeHtml(char.remarkName)}" style="width: 32px; height: 32px; border-radius: 50%;">
+                    ${forumEscapeHtml(char.remarkName)}
                 </label>
             `;
             charList.appendChild(li);
@@ -502,10 +531,10 @@ function openShareCommentModal(postId, commentIndex) {
             const li = document.createElement('li');
             li.className = 'binding-list-item';
             li.innerHTML = `
-                <input type="checkbox" id="share-to-${group.id}" value="${group.id}" data-share-target="group">
-                <label for="share-to-${group.id}" style="display: flex; align-items: center; gap: 10px;">
-                    <img src="${group.avatar}" alt="${group.name}" style="width: 32px; height: 32px; border-radius: 50%;">
-                    ${group.name}
+                <input type="checkbox" id="share-to-${forumEscapeHtml(group.id)}" value="${forumEscapeHtml(group.id)}" data-share-target="group">
+                <label for="share-to-${forumEscapeHtml(group.id)}" style="display: flex; align-items: center; gap: 10px;">
+                    <img src="${forumEscapeHtml(forumSafeImageUrl(group.avatar))}" alt="${forumEscapeHtml(group.name)}" style="width: 32px; height: 32px; border-radius: 50%;">
+                    ${forumEscapeHtml(group.name)}
                     <span style="font-size: 12px; color: #999;">[群聊]</span>
                 </label>
             `;
@@ -521,4 +550,3 @@ function openShareCommentModal(postId, commentIndex) {
 
     modal.classList.add('visible');
 }
-

@@ -205,6 +205,9 @@ function setupChatSettings() {
                 showToast('正在识别头像变化…');
                 await window.AvatarSystem.recognizeAndNotifyUserAvatarChange(currentChatId, oldMyAvatar, compressedUrl);
             }
+            if (window.AvatarSystem && typeof window.AvatarSystem.syncManualAvatarChange === 'function') {
+                window.AvatarSystem.syncManualAvatarChange(currentChatId, compressedUrl, undefined);
+            }
             char.myAvatar = compressedUrl;
             await saveCharacter(currentChatId);
             document.getElementById('setting-my-avatar-preview').src = compressedUrl;

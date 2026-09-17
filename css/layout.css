@@ -3,6 +3,7 @@
 .phone-screen {
     width: 100%;
     height: 100vh;
+    height: 100dvh;
     background-color: #ffffff;
     overflow: hidden;
     position: relative;
@@ -39,7 +40,9 @@
     justify-content: space-between;
     align-items: center;
     padding: 10px 20px;
-    padding-top: max(10px, env(safe-area-inset-top)); /* 适配灵动岛 */
+    padding-right: max(20px, var(--ovo-safe-area-right));
+    padding-left: max(20px, var(--ovo-safe-area-left));
+    padding-top: max(10px, var(--ovo-safe-area-top)); /* 适配灵动岛及 iOS PWA 系统顶栏 */
     background-color: rgba(255, 255, 255, 0.8);
     backdrop-filter: blur(10px);
     border-bottom: 1px solid #eee;
@@ -49,7 +52,7 @@
 }
 
 body.has-statusbar .app-header {
-    padding-top: calc(35px + env(safe-area-inset-top)) !important; /* 开启状态栏时，让顶部导航栏顺位下移 */
+    padding-top: calc(35px + var(--ovo-safe-area-top)) !important; /* 开启状态栏时，让顶部导航栏顺位下移 */
 }
 
 .app-header .back-btn,
@@ -148,14 +151,14 @@ body.has-statusbar .app-header {
     background-size: cover;
     background-position: center;
     transition: background-image 0.5s ease-in-out;
-    padding: calc(45px + env(safe-area-inset-top)) 5px 25px;
+    padding: calc(45px + var(--ovo-safe-area-top)) 5px 25px;
     flex-direction: column;
     overflow: hidden;
     position: relative;
 }
 
 body.has-statusbar #home-screen {
-    padding-top: calc(75px + env(safe-area-inset-top)) !important; /* 开启状态栏时，让内容下移防止遮挡 */
+    padding-top: calc(75px + var(--ovo-safe-area-top)) !important; /* 开启状态栏时，让内容下移防止遮挡 */
 }
 
 /* 顶栏状态栏 */
@@ -168,7 +171,7 @@ body.has-statusbar #home-screen {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: calc(8px + env(safe-area-inset-top)) 16px 8px;
+    padding: calc(8px + var(--ovo-safe-area-top)) 16px 8px;
     font-size: 13px;
     font-weight: 600;
     color: var(--text-color, #333);
@@ -212,6 +215,12 @@ body.night-mode-active {
     --nav-active-icon-color: #e0e0e0;
     --kkt-icon-color: #e0e0e0;
     --func-icon-color: #e0e0e0;
+    --ovo-status-bar-tint: #121212;
+}
+
+html.is-ios-pwa .phone-screen {
+    /* iOS 主屏幕 Web App 冷启动时 100dvh 可能在首帧取值错误。 */
+    height: 100vh;
 }
 
 body.night-mode-active {
@@ -858,7 +867,7 @@ body.night-mode-active code {
     align-items: center;
     background-color: #fcfcfc;
     border-top: 1px solid #f0f0f0;
-    padding: 5px 0;
+    padding: 5px var(--ovo-safe-area-right) calc(5px + var(--ovo-safe-area-bottom)) var(--ovo-safe-area-left);
     flex-shrink: 0;
     height: auto;
     position: fixed;

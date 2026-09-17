@@ -91,7 +91,7 @@ async function generateImageDescription(msg, chat, apiConfig) {
     if (!msg || !msg.parts || !msg.parts.some(p => p.type === 'image' && !p.description)) return;
     
     let {url, key, model, provider} = apiConfig;
-    if (!url || !key || !model) return;
+    if (typeof isApiConfigReady === 'function' ? !isApiConfigReady(apiConfig) : (!url || !key || !model)) return;
     if (url.endsWith('/')) url = url.slice(0, -1);
 
     const prompt = "请详细描述这张图片的内容，包括人物、动作、环境、物品等细节，尽量客观准确。请将你的描述内容包裹在 <image_description> 和 </image_description> 标签内，不要输出任何其他废话。";
@@ -200,21 +200,7 @@ async function generateImageDescription(msg, chat, apiConfig) {
             Authorization: `Bearer ${key}`
         };
 
-        const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(requestBody)
-        });
-
-        if (!response.ok) throw new Error(`API Error: ${response.status}`);
-        
-        const result = await response.json();
-        let description = "";
-        if (provider === 'gemini') {
-            description = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        } else {
-            description = result.choices[0].message.content;
-        }
+        let description = await fetchAiResponse(apiConfig, requestBody, headers, endpoint, false);
 
         if (description) {
             // 提取 XML 标签内的内容

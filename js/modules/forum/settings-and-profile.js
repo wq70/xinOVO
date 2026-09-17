@@ -3,7 +3,8 @@ function forumDeletePost(postId) {
     const index = db.forumPosts.findIndex(p => p.id === postId);
     if (index === -1) return;
     const post = db.forumPosts[index];
-    if (post.authorId !== 'user' && !(post.authorId && post.authorId.startsWith('alt_'))) { showToast('只能删除自己的帖子'); return; }
+    if (!forumAccountOwnsAuthor(post.authorId)) { showToast('只能删除当前身份发布的帖子'); return; }
+    forumRecordEvent('post_deleted', { postId: post.id, title: post.title || '' });
     db.forumPosts.splice(index, 1);
     saveData();
     switchScreen('forum-screen');
@@ -23,16 +24,15 @@ function forumTogglePostDeleteMode() {
 }
 
 function forumPostSelectAll() {
-    var posts = db.forumPosts || [];
     forumSelectedPostIds.clear();
-    posts.forEach(function(p) { forumSelectedPostIds.add(p.id); });
+    document.querySelectorAll('#forum-posts-container .forum-post-card[data-id]').forEach(function(card) { forumSelectedPostIds.add(card.dataset.id); });
     renderForumPosts(db.forumPosts, forumGetActiveFilter());
 }
 
 function forumPostDeleteSelected() {
     if (forumSelectedPostIds.size === 0) { showToast('请先选择要删除的帖子'); return; }
     if (!confirm('确定要删除选中的 ' + forumSelectedPostIds.size + ' 个帖子吗？')) return;
-    db.forumPosts = (db.forumPosts || []).filter(function(p) { return !forumSelectedPostIds.has(p.id); });
+    db.forumPosts = (db.forumPosts || []).filter(function(p) { return !forumSelectedPostIds.has(p.id) || !forumAccountOwnsAuthor(p.authorId); });
     saveData();
     forumSelectedPostIds.clear();
     forumPostDeleteMode = false;
@@ -60,6 +60,7 @@ function forumGetActiveFilter() {
 }
 
 function forumLoadSettings() {
+    forumEnsureData();
     const s = db.forumSettings || { postsPerGeneration: 8, commentsPerPost: { min: 4, max: 8 }, autoReplyCount: 3, detailReplyCount: 2 };
     const postsInput = document.getElementById('forum-posts-count-input');
     const minInput = document.getElementById('forum-comments-min-input');
@@ -74,6 +75,33 @@ function forumLoadSettings() {
     if (autoReplyInput) autoReplyInput.value = s.autoReplyCount != null ? s.autoReplyCount : 3;
     if (detailReplyInput) detailReplyInput.value = s.detailReplyCount != null ? s.detailReplyCount : 2;
     if (dmCountInput) dmCountInput.value = Math.max(1, Math.min(20, (s.dmPerGeneration != null ? parseInt(s.dmPerGeneration, 10) : 4)));
+    ['proactive', 'romance', 'conflict'].forEach(function(kind) {
+        var key = kind + 'Intensity';
+        var input = document.getElementById('forum-' + kind + '-intensity');
+        var value = document.getElementById('forum-' + kind + '-intensity-value');
+        if (input) {
+            input.value = s[key] != null ? s[key] : (kind === 'conflict' ? 35 : 50);
+            input.oninput = function() { if (value) value.textContent = input.value; };
+        }
+        if (value && input) value.textContent = input.value;
+    });
+    var continuityToggle = document.getElementById('forum-continuity-toggle');
+    var knowledgeToggle = document.getElementById('forum-knowledge-toggle');
+    var quietToggle = document.getElementById('forum-quiet-hours-toggle');
+    var autoAdvanceToggle = document.getElementById('forum-auto-advance-toggle');
+    var quietRow = document.getElementById('forum-quiet-hours-row');
+    if (continuityToggle) continuityToggle.checked = s.enableCommunityContinuity !== false;
+    if (knowledgeToggle) knowledgeToggle.checked = s.enableKnowledgeBoundaries !== false;
+    if (autoAdvanceToggle) autoAdvanceToggle.checked = !!s.autoAdvanceOnOpen;
+    if (quietToggle) {
+        quietToggle.checked = !!s.quietHoursEnabled;
+        quietToggle.onchange = function() { if (quietRow) quietRow.style.display = quietToggle.checked ? 'flex' : 'none'; };
+    }
+    if (quietRow) quietRow.style.display = quietToggle && quietToggle.checked ? 'flex' : 'none';
+    var quietStart = document.getElementById('forum-quiet-hours-start');
+    var quietEnd = document.getElementById('forum-quiet-hours-end');
+    if (quietStart) quietStart.value = s.quietHoursStart || '23:00';
+    if (quietEnd) quietEnd.value = s.quietHoursEnd || '08:00';
     
     const apiSettings = db.forumApiSettings || { useForumApi: false, url: '', key: '', model: '', temperature: 0.9 };
     const useApiToggle = document.getElementById('forum-use-api-toggle');
@@ -84,16 +112,20 @@ function forumLoadSettings() {
     
     if (useApiToggle) {
         useApiToggle.checked = apiSettings.useForumApi || false;
-        useApiToggle.addEventListener('change', function() {
+        useApiToggle.onchange = function() {
             if (apiConfigSection) apiConfigSection.style.display = this.checked ? 'block' : 'none';
-        });
+        };
         if (apiConfigSection) apiConfigSection.style.display = useApiToggle.checked ? 'block' : 'none';
     }
     
     if (apiUrlInput) apiUrlInput.value = apiSettings.url || '';
     if (apiKeyInput) apiKeyInput.value = apiSettings.key || '';
     if (apiModelSelect && apiSettings.model) {
-        apiModelSelect.innerHTML = `<option value="${apiSettings.model}">${apiSettings.model}</option>`;
+        apiModelSelect.innerHTML = '';
+        const option = document.createElement('option');
+        option.value = apiSettings.model;
+        option.textContent = apiSettings.model;
+        apiModelSelect.appendChild(option);
     }
     
     const tempSlider = document.getElementById('forum-temperature-slider');
@@ -103,14 +135,14 @@ function forumLoadSettings() {
         tempSlider.value = savedTemp;
         tempValue.textContent = savedTemp;
         
-        tempSlider.addEventListener('input', (e) => {
+        tempSlider.oninput = (e) => {
             tempValue.textContent = e.target.value;
-        });
+        };
     }
     
     const fetchModelsBtn = document.getElementById('forum-fetch-models-btn');
     if (fetchModelsBtn) {
-        fetchModelsBtn.addEventListener('click', forumFetchModels);
+        fetchModelsBtn.onclick = forumFetchModels;
     }
 
     // 角色小号私信设置
@@ -123,17 +155,17 @@ function forumLoadSettings() {
         const altSettings = db.forumSettings && db.forumSettings.enableCharAltDm;
         charAltEnable.checked = !!altSettings;
         charAltOptions.style.display = charAltEnable.checked ? 'block' : 'none';
-        charAltEnable.addEventListener('change', function() {
+        charAltEnable.onchange = function() {
             charAltOptions.style.display = this.checked ? 'block' : 'none';
-        });
+        };
     }
     if (charAltProbSlider && charAltProbValue) {
         const p = (db.forumSettings && db.forumSettings.charAltProbability) != null ? db.forumSettings.charAltProbability : 25;
         charAltProbSlider.value = Math.max(0, Math.min(100, p));
         charAltProbValue.textContent = charAltProbSlider.value + '%';
-        charAltProbSlider.addEventListener('input', function() {
+        charAltProbSlider.oninput = function() {
             charAltProbValue.textContent = this.value + '%';
-        });
+        };
     }
     if (charAltList) {
         const mainChars = (db.characters || []).filter(function(c) { return c.source !== 'forum'; });
@@ -193,6 +225,20 @@ function forumSaveSettings() {
     db.forumSettings.autoReplyCount = autoReplyCount;
     db.forumSettings.detailReplyCount = detailReplyCount;
     db.forumSettings.dmPerGeneration = dmPerGeneration;
+    ['proactive', 'romance', 'conflict'].forEach(function(kind) {
+        var input = document.getElementById('forum-' + kind + '-intensity');
+        if (input) db.forumSettings[kind + 'Intensity'] = Math.max(0, Math.min(100, parseInt(input.value, 10) || 0));
+    });
+    var continuityToggle = document.getElementById('forum-continuity-toggle');
+    var knowledgeToggle = document.getElementById('forum-knowledge-toggle');
+    var quietToggle = document.getElementById('forum-quiet-hours-toggle');
+    var autoAdvanceToggle = document.getElementById('forum-auto-advance-toggle');
+    db.forumSettings.enableCommunityContinuity = !continuityToggle || continuityToggle.checked;
+    db.forumSettings.enableKnowledgeBoundaries = !knowledgeToggle || knowledgeToggle.checked;
+    db.forumSettings.quietHoursEnabled = !!(quietToggle && quietToggle.checked);
+    db.forumSettings.autoAdvanceOnOpen = !!(autoAdvanceToggle && autoAdvanceToggle.checked);
+    db.forumSettings.quietHoursStart = (document.getElementById('forum-quiet-hours-start') || {}).value || '23:00';
+    db.forumSettings.quietHoursEnd = (document.getElementById('forum-quiet-hours-end') || {}).value || '08:00';
 
     const charAltEnable = document.getElementById('forum-char-alt-enable');
     const charAltProbSlider = document.getElementById('forum-char-alt-prob-slider');
@@ -232,7 +278,7 @@ function forumSaveSettings() {
 function forumGetUserStats() {
     const posts = db.forumPosts || [];
     let postCount = 0, commentCount = 0, likeCount = 0;
-    const isOwnId = function(id) { return id === 'user' || (id && id.startsWith('alt_')); };
+    const isOwnId = function(id) { return id === 'user' || id === 'main' || (id && id.startsWith('alt_')); };
     posts.forEach(p => {
         if (isOwnId(p.authorId)) postCount++;
         (p.comments || []).forEach(c => { if (isOwnId(c.authorId)) commentCount++; });
@@ -349,15 +395,154 @@ function forumSaveProfile() {
     db.forumUserProfile.username = username;
     db.forumUserProfile.bio = (bioInput && bioInput.value) || '';
     saveData();
+    if (forumCurrentAccountId() === 'main') forumUpdateIdentityChip();
     showToast('资料已保存');
 }
 
 function forumBindNewEvents() {
     document.getElementById('create-post-fab') && document.getElementById('create-post-fab').addEventListener('click', () => { document.getElementById('create-forum-post-modal').classList.add('visible'); });
     document.getElementById('create-forum-post-form') && document.getElementById('create-forum-post-form').addEventListener('submit', function(e) { e.preventDefault(); forumPublishPost(); });
+    const forumPostTypeInput = document.getElementById('forum-post-type-input');
+    if (forumPostTypeInput) forumPostTypeInput.onchange = function() {
+        const group = document.getElementById('forum-poll-options-group');
+        if (group) group.style.display = forumPostTypeInput.value === 'poll' ? 'block' : 'none';
+    };
+    document.getElementById('forum-save-draft-btn') && document.getElementById('forum-save-draft-btn').addEventListener('click', forumSaveComposerDraft);
+    document.getElementById('forum-open-drafts-btn') && document.getElementById('forum-open-drafts-btn').addEventListener('click', forumRenderDrafts);
     document.getElementById('cancel-forum-post-btn') && document.getElementById('cancel-forum-post-btn').addEventListener('click', () => { document.getElementById('create-forum-post-modal').classList.remove('visible'); });
 
+    // 更多功能居中弹窗逻辑
+    function forumEnsureMoreModal() {
+        let modal = document.getElementById('forum-more-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'forum-more-modal';
+            modal.className = 'modal-overlay';
+            modal.innerHTML = `
+                <div class="modal-window forum-more-modal-window">
+                    <div class="forum-more-modal-header">
+                        <h3 class="forum-more-modal-title">论坛功能</h3>
+                        <button type="button" class="forum-more-modal-close" id="forum-more-modal-close" aria-label="关闭">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="forum-more-modal-list">
+                        <button type="button" class="forum-more-modal-item" id="forum-more-notice-btn">
+                            <div class="forum-more-modal-icon">
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+                                    <path d="M10 21h4"></path>
+                                </svg>
+                            </div>
+                            <div class="forum-more-modal-text">
+                                <span class="forum-more-item-name">与我相关</span>
+                                <span class="forum-more-item-desc">查看提及、互动与提醒</span>
+                            </div>
+                            <span class="forum-more-item-badge" id="forum-more-notice-badge" style="display:none;">0</span>
+                        </button>
+                        <button type="button" class="forum-more-modal-item" id="forum-more-manage-btn">
+                            <div class="forum-more-modal-icon">
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                                </svg>
+                            </div>
+                            <div class="forum-more-modal-text">
+                                <span class="forum-more-item-name">管理清理</span>
+                                <span class="forum-more-item-desc">批量删除我的发布内容</span>
+                            </div>
+                        </button>
+                        <button type="button" class="forum-more-modal-item" id="forum-more-settings-btn">
+                            <div class="forum-more-modal-icon">
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                                </svg>
+                            </div>
+                            <div class="forum-more-modal-text">
+                                <span class="forum-more-item-name">论坛设置</span>
+                                <span class="forum-more-item-desc">调整 API、剧情与社区模式</span>
+                            </div>
+                        </button>
+                        <button type="button" class="forum-more-modal-item" id="forum-more-account-btn">
+                            <div class="forum-more-modal-icon">
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="12" cy="7" r="4"></circle>
+                                </svg>
+                            </div>
+                            <div class="forum-more-modal-text">
+                                <span class="forum-more-item-name">身份管理</span>
+                                <span class="forum-more-item-desc">切换或管理小号与资料</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) modal.classList.remove('visible');
+            });
+            const closeBtn = modal.querySelector('#forum-more-modal-close');
+            if (closeBtn) closeBtn.addEventListener('click', () => modal.classList.remove('visible'));
+
+            const noticeBtn = modal.querySelector('#forum-more-notice-btn');
+            if (noticeBtn) noticeBtn.addEventListener('click', () => {
+                modal.classList.remove('visible');
+                forumRenderNotifications();
+            });
+
+            const manageBtn = modal.querySelector('#forum-more-manage-btn');
+            if (manageBtn) manageBtn.addEventListener('click', () => {
+                modal.classList.remove('visible');
+                forumTogglePostDeleteMode();
+            });
+
+            const settingsBtn = modal.querySelector('#forum-more-settings-btn');
+            if (settingsBtn) settingsBtn.addEventListener('click', () => {
+                modal.classList.remove('visible');
+                switchScreen('forum-settings-screen');
+                forumLoadSettings();
+            });
+
+            const accountBtn = modal.querySelector('#forum-more-account-btn');
+            if (accountBtn) accountBtn.addEventListener('click', () => {
+                modal.classList.remove('visible');
+                switchScreen('forum-alt-accounts-screen');
+                forumRenderAltAccountsList();
+            });
+        }
+        return modal;
+    }
+
+    const moreBtn = document.getElementById('forum-more-btn');
+    if (moreBtn) {
+        moreBtn.addEventListener('click', () => {
+            const modal = forumEnsureMoreModal();
+            forumUpdateMoreNoticeBadge();
+            modal.classList.add('visible');
+        });
+    }
+
     document.getElementById('forum-settings-btn') && document.getElementById('forum-settings-btn').addEventListener('click', () => { switchScreen('forum-settings-screen'); forumLoadSettings(); });
+    document.getElementById('forum-notifications-btn') && document.getElementById('forum-notifications-btn').addEventListener('click', forumRenderNotifications);
+    document.getElementById('forum-local-search-btn') && document.getElementById('forum-local-search-btn').addEventListener('click', function() {
+        var input = document.getElementById('forum-search-input');
+        var query = input ? input.value : '';
+        var results = forumRunLocalSearch(query);
+        renderForumPosts(results, 'all');
+        showToast(query.trim() ? '找到 ' + results.length + ' 篇已有帖子' : '已显示全部帖子');
+    });
+    document.getElementById('forum-search-input') && document.getElementById('forum-search-input').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); document.getElementById('forum-local-search-btn').click(); }
+    });
+    document.getElementById('forum-current-identity-chip') && document.getElementById('forum-current-identity-chip').addEventListener('click', function() { switchScreen('forum-alt-accounts-screen'); forumRenderAltAccountsList(); });
     document.getElementById('save-forum-settings-btn') && document.getElementById('save-forum-settings-btn').addEventListener('click', forumSaveSettings);
     document.getElementById('forum-goto-profile-btn') && document.getElementById('forum-goto-profile-btn').addEventListener('click', () => { switchScreen('forum-profile-screen'); forumLoadProfile(); });
 
@@ -427,4 +612,3 @@ function forumBindNewEvents() {
         });
     });
 }
-

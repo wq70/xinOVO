@@ -465,12 +465,13 @@ function setupMemoryJournalScreen() {
         generatingChatId = currentChatId;
 
         try {
-            const apiConfig = db.summaryApiSettings
+            let apiConfig = db.summaryApiSettings
                 && db.summaryApiSettings.url
                 && db.summaryApiSettings.key
                 && db.summaryApiSettings.model
                 ? db.summaryApiSettings
                 : db.apiSettings;
+            apiConfig = typeof getApiConfigForFeature === 'function' ? getApiConfigForFeature('journal', apiConfig) : apiConfig;
             const rawContent = await requestJournalSummary(apiConfig, summaryPrompt);
             const journalData = parseJournalResponse(rawContent);
 
