@@ -9,6 +9,14 @@ function setupChatSettings() {
         option.textContent = colorThemes[key].name;
         themeSelect.appendChild(option);
     });
+
+    const pokeEnabled = document.getElementById('setting-poke-enabled');
+    const pokeOptions = document.getElementById('setting-poke-options');
+    if (pokeEnabled && pokeOptions) {
+        pokeEnabled.addEventListener('change', () => {
+            pokeOptions.style.display = pokeEnabled.checked ? 'block' : 'none';
+        });
+    }
     
     document.getElementById('chat-settings-btn')?.addEventListener('click', () => {
         if (currentChatType === 'private') {
@@ -1852,6 +1860,28 @@ function loadSettingsToSidebar() {
 
         document.getElementById('setting-bilingual-mode').checked = e.bilingualModeEnabled || false;
         document.getElementById('setting-bilingual-style').value = e.bilingualBubbleStyle || 'under';
+
+        if (window.PokeSystem) window.PokeSystem.ensureSettings(e);
+        const pokeEnabledEl = document.getElementById('setting-poke-enabled');
+        const pokeOptionsEl = document.getElementById('setting-poke-options');
+        if (pokeEnabledEl) pokeEnabledEl.checked = e.pokeEnabled === true;
+        if (pokeOptionsEl) pokeOptionsEl.style.display = e.pokeEnabled === true ? 'block' : 'none';
+        const pokeCharacterEl = document.getElementById('setting-poke-character-initiated');
+        if (pokeCharacterEl) pokeCharacterEl.checked = e.pokeAllowCharacterInitiated !== false;
+        const pokeReplyEl = document.getElementById('setting-poke-trigger-reply');
+        if (pokeReplyEl) pokeReplyEl.checked = e.pokeTriggerReply !== false;
+        const pokeCharSuffixEl = document.getElementById('setting-poke-char-suffix');
+        if (pokeCharSuffixEl) pokeCharSuffixEl.value = e.pokeCharacterSuffix || '';
+        const pokeUserSuffixEl = document.getElementById('setting-poke-user-suffix');
+        if (pokeUserSuffixEl) pokeUserSuffixEl.value = e.pokeUserSuffix || '';
+        const pokeEffectEl = document.getElementById('setting-poke-effect-mode');
+        if (pokeEffectEl) pokeEffectEl.value = e.pokeEffectMode || 'full';
+        const pokeVibrationEl = document.getElementById('setting-poke-vibration');
+        if (pokeVibrationEl) pokeVibrationEl.checked = e.pokeVibrationEnabled !== false;
+        const pokeNotificationEl = document.getElementById('setting-poke-notification-mode');
+        if (pokeNotificationEl) pokeNotificationEl.value = e.pokeNotificationMode || 'in_chat';
+        const pokeContextEl = document.getElementById('setting-poke-context');
+        if (pokeContextEl) pokeContextEl.checked = e.pokeContextEnabled !== false;
         
         document.getElementById('setting-avatar-mode').value = e.avatarMode || 'full';
         const avatarRadius = e.avatarRadius !== undefined ? e.avatarRadius : 50;
@@ -2214,6 +2244,47 @@ function loadSettingsToSidebar() {
         const maxInput = document.getElementById('setting-auto-reply-max');
         if (maxInput) maxInput.value = ar.maxInterval || 180;
 
+        // === 加载角色回复后追发设置 ===
+        const followUp = window.FollowUpReply
+            ? window.FollowUpReply.ensureSettings(e)
+            : (e.followUpReply || {});
+        const followUpEnabledEl = document.getElementById('setting-follow-up-enabled');
+        const followUpOptionsEl = document.getElementById('setting-follow-up-options');
+        const followUpModeEl = document.getElementById('setting-follow-up-mode');
+        const followUpFixedEl = document.getElementById('setting-follow-up-fixed-container');
+        const followUpRandomEl = document.getElementById('setting-follow-up-random-container');
+        const followUpProbabilityEl = document.getElementById('setting-follow-up-probability');
+        const followUpProbabilityValueEl = document.getElementById('setting-follow-up-probability-value');
+        const hoursValue = minutes => Math.round((Number(minutes || 0) / 60) * 1000) / 1000;
+        if (followUpEnabledEl) followUpEnabledEl.checked = followUp.enabled === true;
+        if (followUpOptionsEl) followUpOptionsEl.style.display = followUp.enabled === true ? 'block' : 'none';
+        if (followUpModeEl) followUpModeEl.value = followUp.delayMode === 'fixed' ? 'fixed' : 'random';
+        const followUpFixedHoursEl = document.getElementById('setting-follow-up-fixed-hours');
+        const followUpMinHoursEl = document.getElementById('setting-follow-up-min-hours');
+        const followUpMaxHoursEl = document.getElementById('setting-follow-up-max-hours');
+        if (followUpFixedHoursEl) followUpFixedHoursEl.value = hoursValue(followUp.fixedDelayMinutes || 120);
+        if (followUpMinHoursEl) followUpMinHoursEl.value = hoursValue(followUp.minDelayMinutes || 60);
+        if (followUpMaxHoursEl) followUpMaxHoursEl.value = hoursValue(followUp.maxDelayMinutes || 180);
+        if (followUpProbabilityEl) followUpProbabilityEl.value = followUp.probability ?? 35;
+        if (followUpProbabilityValueEl) followUpProbabilityValueEl.textContent = `${followUp.probability ?? 35}%`;
+        const followUpMaxCountEl = document.getElementById('setting-follow-up-max-count');
+        if (followUpMaxCountEl) followUpMaxCountEl.value = String(followUp.maxFollowUps || 1);
+        const updateFollowUpVisibility = () => {
+            const enabled = followUpEnabledEl && followUpEnabledEl.checked;
+            const fixedMode = followUpModeEl && followUpModeEl.value === 'fixed';
+            if (followUpOptionsEl) followUpOptionsEl.style.display = enabled ? 'block' : 'none';
+            if (followUpFixedEl) followUpFixedEl.style.display = fixedMode ? 'flex' : 'none';
+            if (followUpRandomEl) followUpRandomEl.style.display = fixedMode ? 'none' : 'flex';
+        };
+        if (followUpEnabledEl) followUpEnabledEl.onchange = updateFollowUpVisibility;
+        if (followUpModeEl) followUpModeEl.onchange = updateFollowUpVisibility;
+        if (followUpProbabilityEl) {
+            followUpProbabilityEl.oninput = function () {
+                if (followUpProbabilityValueEl) followUpProbabilityValueEl.textContent = `${this.value}%`;
+            };
+        }
+        updateFollowUpVisibility();
+
         // === 加载消息弹窗通知设置 ===
         const bgToastEl = document.getElementById('setting-bg-toast-enabled');
         if (bgToastEl) {
@@ -2563,6 +2634,24 @@ async function saveSettingsFromSidebar() {
 
         e.showStatusUpdateMsg = document.getElementById('setting-show-status-update-msg').checked;
         e.showReminderMsg = document.getElementById('setting-show-reminder-msg').checked;
+        const pokeEnabledEl = document.getElementById('setting-poke-enabled');
+        e.pokeEnabled = !!(pokeEnabledEl && pokeEnabledEl.checked);
+        const pokeCharacterEl = document.getElementById('setting-poke-character-initiated');
+        e.pokeAllowCharacterInitiated = !pokeCharacterEl || pokeCharacterEl.checked;
+        const pokeReplyEl = document.getElementById('setting-poke-trigger-reply');
+        e.pokeTriggerReply = !pokeReplyEl || pokeReplyEl.checked;
+        const pokeCharSuffixEl = document.getElementById('setting-poke-char-suffix');
+        e.pokeCharacterSuffix = window.PokeSystem ? window.PokeSystem.cleanSuffix(pokeCharSuffixEl && pokeCharSuffixEl.value) : ((pokeCharSuffixEl && pokeCharSuffixEl.value) || '').trim();
+        const pokeUserSuffixEl = document.getElementById('setting-poke-user-suffix');
+        e.pokeUserSuffix = window.PokeSystem ? window.PokeSystem.cleanSuffix(pokeUserSuffixEl && pokeUserSuffixEl.value) : ((pokeUserSuffixEl && pokeUserSuffixEl.value) || '').trim();
+        const pokeEffectEl = document.getElementById('setting-poke-effect-mode');
+        e.pokeEffectMode = pokeEffectEl ? pokeEffectEl.value : 'full';
+        const pokeVibrationEl = document.getElementById('setting-poke-vibration');
+        e.pokeVibrationEnabled = !pokeVibrationEl || pokeVibrationEl.checked;
+        const pokeNotificationEl = document.getElementById('setting-poke-notification-mode');
+        e.pokeNotificationMode = pokeNotificationEl ? pokeNotificationEl.value : 'in_chat';
+        const pokeContextEl = document.getElementById('setting-poke-context');
+        e.pokeContextEnabled = !pokeContextEl || pokeContextEl.checked;
         e.avatarSystemEnabled = document.getElementById('setting-avatar-system-enabled').checked;
         e.charSenseAvatarChangeEnabled = _senseAvatarChangeEnabled;
         const charCanSwitchInput = document.getElementById('setting-char-can-switch-avatar');
@@ -2678,6 +2767,36 @@ async function saveSettingsFromSidebar() {
         
         const autoReplyMaxInput = parseInt(document.getElementById('setting-auto-reply-max').value, 10);
         e.autoReply.maxInterval = isNaN(autoReplyMaxInput) ? 180 : autoReplyMaxInput;
+
+        // === 保存角色回复后追发设置 ===
+        const followUp = window.FollowUpReply
+            ? window.FollowUpReply.ensureSettings(e)
+            : (e.followUpReply || (e.followUpReply = {}));
+        const followUpEnabledEl = document.getElementById('setting-follow-up-enabled');
+        const followUpModeEl = document.getElementById('setting-follow-up-mode');
+        const followUpFixedHoursEl = document.getElementById('setting-follow-up-fixed-hours');
+        const followUpMinHoursEl = document.getElementById('setting-follow-up-min-hours');
+        const followUpMaxHoursEl = document.getElementById('setting-follow-up-max-hours');
+        const followUpProbabilityEl = document.getElementById('setting-follow-up-probability');
+        const followUpMaxCountEl = document.getElementById('setting-follow-up-max-count');
+        const toMinutes = (input, fallback) => {
+            const hours = Number(input && input.value);
+            if (!Number.isFinite(hours)) return fallback;
+            return Math.min(10080, Math.max(5, Math.round(hours * 60)));
+        };
+        followUp.enabled = !!(followUpEnabledEl && followUpEnabledEl.checked);
+        followUp.delayMode = followUpModeEl && followUpModeEl.value === 'fixed' ? 'fixed' : 'random';
+        followUp.fixedDelayMinutes = toMinutes(followUpFixedHoursEl, 120);
+        followUp.minDelayMinutes = toMinutes(followUpMinHoursEl, 60);
+        followUp.maxDelayMinutes = toMinutes(followUpMaxHoursEl, 180);
+        if (followUp.minDelayMinutes > followUp.maxDelayMinutes) {
+            const oldMin = followUp.minDelayMinutes;
+            followUp.minDelayMinutes = followUp.maxDelayMinutes;
+            followUp.maxDelayMinutes = oldMin;
+        }
+        followUp.probability = Math.min(100, Math.max(0, parseInt(followUpProbabilityEl && followUpProbabilityEl.value, 10) || 0));
+        followUp.maxFollowUps = Math.min(3, Math.max(1, parseInt(followUpMaxCountEl && followUpMaxCountEl.value, 10) || 1));
+        if (!followUp.enabled) followUp.pending = null;
 
         // === 保存消息弹窗通知设置 ===
         const bgToastEl = document.getElementById('setting-bg-toast-enabled');

@@ -21,6 +21,7 @@ function setupAddCharModal() {
             maxMemory: 100,
             chatBg: '',
             history: [],
+            pokeEnabled: false,
             isPinned: false,
             status: '在线',
             worldBookIds: [],
@@ -46,6 +47,18 @@ function setupAddCharModal() {
                 enabled: false,
                 interval: 60,
                 lastTriggerTime: 0
+            },
+            followUpReply: {
+                enabled: false,
+                delayMode: 'random',
+                fixedDelayMinutes: 120,
+                minDelayMinutes: 60,
+                maxDelayMinutes: 180,
+                probability: 35,
+                maxFollowUps: 1,
+                pending: null,
+                lastSuccessAt: 0,
+                lastDecision: null
             },
             userAvatarLibrary: [],
             charAvatarLibrary: [],
@@ -244,6 +257,18 @@ async function createCharacterFromData(data, avatar, options) {
             enabled: false,
             interval: 60,
             lastTriggerTime: 0
+        },
+        followUpReply: {
+            enabled: false,
+            delayMode: 'random',
+            fixedDelayMinutes: 120,
+            minDelayMinutes: 60,
+            maxDelayMinutes: 180,
+            probability: 35,
+            maxFollowUps: 1,
+            pending: null,
+            lastSuccessAt: 0,
+            lastDecision: null
         },
         userAvatarLibrary: [],
         charAvatarLibrary: [],

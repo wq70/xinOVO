@@ -234,6 +234,8 @@ function setupChatRoom() {
     if (memoryJournalBtn) {
         memoryJournalBtn.addEventListener('click', () => {
             renderJournalList();
+            const backBtn = document.querySelector('#memory-journal-screen .back-btn');
+            if (backBtn) backBtn.setAttribute('data-target', 'chat-room-screen');
             switchScreen('memory-journal-screen');
             showPanel('none'); 
         });
@@ -247,6 +249,8 @@ function setupChatRoom() {
                 return;
             }
             if (typeof renderMemoryTableScreen === 'function') {
+                const backBtn = document.querySelector('#memory-table-screen .back-btn');
+                if (backBtn) backBtn.setAttribute('data-target', 'chat-room-screen');
                 renderMemoryTableScreen();
                 switchScreen('memory-table-screen');
             } else {
@@ -264,6 +268,8 @@ function setupChatRoom() {
                 return;
             }
             if (typeof renderVectorMemoryScreen === 'function') {
+                const backBtn = document.querySelector('#vector-memory-screen .back-btn');
+                if (backBtn) backBtn.setAttribute('data-target', 'chat-room-screen');
                 renderVectorMemoryScreen();
                 switchScreen('vector-memory-screen');
             } else {

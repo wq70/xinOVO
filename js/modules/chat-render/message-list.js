@@ -108,7 +108,7 @@ function renderMessages(isLoadMore = false, forceScrollToBottom = false) {
             invisibleRegex = /\[.*?(?:接收|退回).*?的转账\]|\[.*?(?:接收|退还).*?的亲属卡\]|\[.*?(?:冻结|解冻|收回)了(?:给.*?的)?亲属卡\]|\[.*?调整(?:给.*?的)?亲属卡额度为：.*?\]|\[.*?更新状态为：.*?\]|\[.*?已接收礼物\]|\[system:.*?\]|\[.*?邀请.*?加入了群聊\]|\[.*?修改群名为：.*?\]|\[system-display:.*?\]|\[.*?同意了.*?的代付请求\]|\[.*?拒绝了.*?的代付请求\]|\[avatar-action:.*?\]|<thinking>[\s\S]*?<\/thinking>|^<thinking>[\s\S]*/;
         }
 
-        const isSystemMsg = /\[system:.*?\]|\[system-display:.*?\]/.test(msg.content) || msg.isNodeBoundary;
+        const isSystemMsg = /\[system:.*?\]|\[system-display:.*?\]/.test(msg.content) || msg.isNodeBoundary || msg.type === 'poke';
         
         if (!isSystemMsg) {
             let prevMsg = null;
@@ -117,7 +117,7 @@ function renderMessages(isLoadMore = false, forceScrollToBottom = false) {
             for (let i = currentIndexInHistory - 1; i >= 0; i--) {
                 const candidate = displayHistory[i];
                 // 跳过隐藏的上下文消息（如角色自知消息），不影响连续消息判断
-                if (candidate.hiddenFromDisplay || candidate.isNodeBoundary) continue;
+                if (candidate.hiddenFromDisplay || candidate.isNodeBoundary || candidate.type === 'poke') continue;
                 if (!invisibleRegex.test(candidate.content)) {
                     prevMsg = candidate;
                     break;

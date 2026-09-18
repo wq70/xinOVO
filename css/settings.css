@@ -434,6 +434,143 @@
     color: var(--primary-color, #2563eb);
 }
 
+.kkt-item-hint {
+    margin: 3px 0 0;
+    color: #999;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.35;
+}
+
+.poke-settings-options {
+    background: #ffffff;
+}
+
+.poke-settings-options .kkt-item {
+    padding-left: 22px;
+    background: #ffffff;
+}
+
+.poke-setting-input-wrap {
+    flex: 1;
+    min-width: 0;
+    max-width: 58%;
+}
+
+.poke-setting-input-wrap input {
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: #555;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.poke-settings-options select {
+    max-width: 112px;
+    border: 0;
+    background: transparent;
+    color: #555;
+    text-align: right;
+}
+
+@media (max-width: 360px) {
+    .poke-settings-options .kkt-item { padding-left: 18px; }
+    .poke-setting-input-wrap { max-width: 54%; }
+}
+
+.poke-member-sheet {
+    max-height: min(62vh, 420px);
+    overflow-y: auto;
+}
+
+.poke-member-sheet-title {
+    padding: 10px 14px 8px;
+    color: #888;
+    font-size: 12px;
+    text-align: center;
+}
+
+/* 角色追发设置沿用当前列表密度，只压缩新增控件，避免窄屏挤压原有标签。 */
+.follow-up-settings {
+    border-top: 1px solid #f5f5f5;
+}
+
+.follow-up-settings .kkt-item-label {
+    min-width: 0;
+    flex: 1;
+}
+
+.follow-up-select {
+    max-width: 104px;
+    border: none;
+    background: transparent;
+    color: #555;
+    font-size: calc(14px * var(--app-font-scale));
+    text-align: right;
+    outline: none;
+}
+
+.follow-up-number {
+    width: 54px;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 4px 5px;
+    border: none;
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.05);
+    color: #555;
+    font-size: calc(13px * var(--app-font-scale));
+    text-align: center;
+}
+
+.follow-up-range-control {
+    flex: 0 1 auto;
+    min-width: 0;
+    gap: 4px;
+}
+
+.follow-up-probability-control {
+    flex: 0 1 148px;
+    min-width: 108px;
+    justify-content: flex-end;
+}
+
+.follow-up-probability-control input[type="range"] {
+    width: min(105px, 28vw);
+    min-width: 70px;
+}
+
+.follow-up-probability-control span {
+    flex: 0 0 34px;
+    text-align: right;
+}
+
+.follow-up-hint {
+    padding: 8px 15px 12px;
+    color: #999;
+    font-size: calc(11px * var(--app-font-scale));
+    line-height: 1.5;
+}
+
+@media (max-width: 350px) {
+    .follow-up-settings .kkt-item {
+        gap: 8px;
+    }
+
+    .follow-up-number {
+        width: 46px;
+    }
+
+    .follow-up-probability-control {
+        flex-basis: 122px;
+        min-width: 96px;
+    }
+}
+
 /* 文本生成参数：沿用 API 页的紧凑白色列表语言 */
 .api-generation-header { align-items: center; }
 .api-generation-summary { flex: 0 0 auto; max-width: 76px; padding: 3px 7px; overflow: hidden; border-radius: 999px; background: #f1f5f9; color: #64748b; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }

@@ -240,6 +240,24 @@ async function saveSettingsFromSidebar() {
 
         e.showStatusUpdateMsg = document.getElementById('setting-show-status-update-msg').checked;
         e.showReminderMsg = document.getElementById('setting-show-reminder-msg').checked;
+        const pokeEnabledEl = document.getElementById('setting-poke-enabled');
+        e.pokeEnabled = !!(pokeEnabledEl && pokeEnabledEl.checked);
+        const pokeCharacterEl = document.getElementById('setting-poke-character-initiated');
+        e.pokeAllowCharacterInitiated = !pokeCharacterEl || pokeCharacterEl.checked;
+        const pokeReplyEl = document.getElementById('setting-poke-trigger-reply');
+        e.pokeTriggerReply = !pokeReplyEl || pokeReplyEl.checked;
+        const pokeCharSuffixEl = document.getElementById('setting-poke-char-suffix');
+        e.pokeCharacterSuffix = window.PokeSystem ? window.PokeSystem.cleanSuffix(pokeCharSuffixEl && pokeCharSuffixEl.value) : ((pokeCharSuffixEl && pokeCharSuffixEl.value) || '').trim();
+        const pokeUserSuffixEl = document.getElementById('setting-poke-user-suffix');
+        e.pokeUserSuffix = window.PokeSystem ? window.PokeSystem.cleanSuffix(pokeUserSuffixEl && pokeUserSuffixEl.value) : ((pokeUserSuffixEl && pokeUserSuffixEl.value) || '').trim();
+        const pokeEffectEl = document.getElementById('setting-poke-effect-mode');
+        e.pokeEffectMode = pokeEffectEl ? pokeEffectEl.value : 'full';
+        const pokeVibrationEl = document.getElementById('setting-poke-vibration');
+        e.pokeVibrationEnabled = !pokeVibrationEl || pokeVibrationEl.checked;
+        const pokeNotificationEl = document.getElementById('setting-poke-notification-mode');
+        e.pokeNotificationMode = pokeNotificationEl ? pokeNotificationEl.value : 'in_chat';
+        const pokeContextEl = document.getElementById('setting-poke-context');
+        e.pokeContextEnabled = !pokeContextEl || pokeContextEl.checked;
         e.avatarSystemEnabled = document.getElementById('setting-avatar-system-enabled').checked;
         e.charSenseAvatarChangeEnabled = _senseAvatarChangeEnabled;
         const charCanSwitchInput = document.getElementById('setting-char-can-switch-avatar');
@@ -355,6 +373,36 @@ async function saveSettingsFromSidebar() {
         
         const autoReplyMaxInput = parseInt(document.getElementById('setting-auto-reply-max').value, 10);
         e.autoReply.maxInterval = isNaN(autoReplyMaxInput) ? 180 : autoReplyMaxInput;
+
+        // === 保存角色回复后追发设置 ===
+        const followUp = window.FollowUpReply
+            ? window.FollowUpReply.ensureSettings(e)
+            : (e.followUpReply || (e.followUpReply = {}));
+        const followUpEnabledEl = document.getElementById('setting-follow-up-enabled');
+        const followUpModeEl = document.getElementById('setting-follow-up-mode');
+        const followUpFixedHoursEl = document.getElementById('setting-follow-up-fixed-hours');
+        const followUpMinHoursEl = document.getElementById('setting-follow-up-min-hours');
+        const followUpMaxHoursEl = document.getElementById('setting-follow-up-max-hours');
+        const followUpProbabilityEl = document.getElementById('setting-follow-up-probability');
+        const followUpMaxCountEl = document.getElementById('setting-follow-up-max-count');
+        const toMinutes = (input, fallback) => {
+            const hours = Number(input && input.value);
+            if (!Number.isFinite(hours)) return fallback;
+            return Math.min(10080, Math.max(5, Math.round(hours * 60)));
+        };
+        followUp.enabled = !!(followUpEnabledEl && followUpEnabledEl.checked);
+        followUp.delayMode = followUpModeEl && followUpModeEl.value === 'fixed' ? 'fixed' : 'random';
+        followUp.fixedDelayMinutes = toMinutes(followUpFixedHoursEl, 120);
+        followUp.minDelayMinutes = toMinutes(followUpMinHoursEl, 60);
+        followUp.maxDelayMinutes = toMinutes(followUpMaxHoursEl, 180);
+        if (followUp.minDelayMinutes > followUp.maxDelayMinutes) {
+            const oldMin = followUp.minDelayMinutes;
+            followUp.minDelayMinutes = followUp.maxDelayMinutes;
+            followUp.maxDelayMinutes = oldMin;
+        }
+        followUp.probability = Math.min(100, Math.max(0, parseInt(followUpProbabilityEl && followUpProbabilityEl.value, 10) || 0));
+        followUp.maxFollowUps = Math.min(3, Math.max(1, parseInt(followUpMaxCountEl && followUpMaxCountEl.value, 10) || 1));
+        if (!followUp.enabled) followUp.pending = null;
 
         // === 保存消息弹窗通知设置 ===
         const bgToastEl = document.getElementById('setting-bg-toast-enabled');

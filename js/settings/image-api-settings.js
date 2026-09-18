@@ -1,7 +1,7 @@
 const saveImageApiGlobalSettings = () => saveGlobalSettings([
     'novelAiSettings', 'novelAiPresets', 'gptImageSettings', 'gptImagePresets',
-    'googleImageSettings', 'stabilityImageSettings', 'activeImageProvider',
-    'imageAtmosphereGroups', 'activeImageAtmosphereId',
+    'googleImageSettings', 'googleImagePresets', 'stabilityImageSettings', 'stabilityImagePresets',
+    'activeImageProvider', 'imageAtmosphereGroups', 'activeImageAtmosphereId',
     'autoCompressImage', 'imageGenTimeout'
 ]);
 
@@ -993,6 +993,256 @@ function setupAdditionalImageProviders() {
             if (event.target.checked) setActiveImageProvider(provider);
         });
     });
+
+    // 绑定 Google 与 Stability 预设管理
+    setupGenericImagePresets('google', {
+        title: 'Google',
+        presetKey: 'googleImagePresets',
+        settingKey: 'googleImageSettings',
+        fields: {
+            url: 'google-image-url',
+            key: 'google-image-key',
+            model: 'google-image-model',
+            aspectRatio: 'google-image-aspect-ratio',
+            systemPrompt: 'google-image-system-prompt',
+            negativePrompt: 'google-image-negative-prompt'
+        },
+        controls: {
+            select: 'google-image-preset-select',
+            applyBtn: 'google-image-apply-preset',
+            saveBtn: 'google-image-save-preset',
+            manageBtn: 'google-image-manage-presets',
+            importBtn: 'google-image-import-presets',
+            exportBtn: 'google-image-export-presets',
+            modal: 'google-image-presets-modal',
+            closeModalBtn: 'google-image-close-modal',
+            listContainer: 'google-image-presets-list'
+        }
+    });
+
+    setupGenericImagePresets('stability', {
+        title: 'Stability',
+        presetKey: 'stabilityImagePresets',
+        settingKey: 'stabilityImageSettings',
+        fields: {
+            url: 'stability-image-url',
+            key: 'stability-image-key',
+            service: 'stability-image-service',
+            aspectRatio: 'stability-image-aspect-ratio',
+            outputFormat: 'stability-image-output-format',
+            stylePreset: 'stability-image-style-preset',
+            seed: 'stability-image-seed',
+            systemPrompt: 'stability-image-system-prompt',
+            negativePrompt: 'stability-image-negative-prompt'
+        },
+        controls: {
+            select: 'stability-image-preset-select',
+            applyBtn: 'stability-image-apply-preset',
+            saveBtn: 'stability-image-save-preset',
+            manageBtn: 'stability-image-manage-presets',
+            importBtn: 'stability-image-import-presets',
+            exportBtn: 'stability-image-export-presets',
+            modal: 'stability-image-presets-modal',
+            closeModalBtn: 'stability-image-close-modal',
+            listContainer: 'stability-image-presets-list'
+        }
+    });
+}
+
+function setupGenericImagePresets(providerName, config) {
+    const { title, presetKey, fields, controls } = config;
+    const presetSelect = document.getElementById(controls.select);
+    const applyPresetBtn = document.getElementById(controls.applyBtn);
+    const savePresetBtn = document.getElementById(controls.saveBtn);
+    const managePresetBtn = document.getElementById(controls.manageBtn);
+    const importPresetBtn = document.getElementById(controls.importBtn);
+    const exportPresetBtn = document.getElementById(controls.exportBtn);
+    const manageModal = document.getElementById(controls.modal);
+    const closeModalBtn = document.getElementById(controls.closeModalBtn);
+    const presetListContainer = document.getElementById(controls.listContainer);
+
+    function _getPresets() {
+        return db[presetKey] || [];
+    }
+
+    function _savePresets(arr) {
+        db[presetKey] = arr || [];
+        saveImageApiGlobalSettings();
+    }
+
+    function populatePresets() {
+        if (!presetSelect) return;
+        const presets = _getPresets();
+        presetSelect.innerHTML = '<option value="">— 选择 —</option>';
+        presets.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.name;
+            opt.textContent = p.name;
+            presetSelect.appendChild(opt);
+        });
+    }
+
+    populatePresets();
+
+    if (applyPresetBtn) {
+        applyPresetBtn.addEventListener('click', () => {
+            const name = presetSelect ? presetSelect.value : '';
+            if (!name) return showToast('请先选择预设');
+            const p = _getPresets().find(x => x.name === name);
+            if (!p) return showToast('未找到该预设');
+
+            Object.entries(fields).forEach(([key, domId]) => {
+                const el = document.getElementById(domId);
+                if (el && p.data[key] !== undefined) {
+                    el.value = p.data[key];
+                }
+            });
+
+            showToast(`已加载 ${title} 预设：${name}`);
+        });
+    }
+
+    if (savePresetBtn) {
+        savePresetBtn.addEventListener('click', () => {
+            const data = {};
+            Object.entries(fields).forEach(([key, domId]) => {
+                const el = document.getElementById(domId);
+                data[key] = el ? el.value.trim() : '';
+            });
+
+            const name = prompt('请输入预设名称（将覆盖同名预设）：');
+            if (!name || !name.trim()) return;
+
+            const presets = _getPresets();
+            const idx = presets.findIndex(p => p.name === name.trim());
+            const presetObj = { name: name.trim(), data: data };
+
+            if (idx >= 0) presets[idx] = presetObj;
+            else presets.push(presetObj);
+
+            _savePresets(presets);
+            populatePresets();
+            showToast(`${title} 生图预设已保存`);
+        });
+    }
+
+    function renderPresetsList() {
+        if (!presetListContainer) return;
+        presetListContainer.innerHTML = '';
+        const presets = _getPresets();
+        if (presets.length === 0) {
+            presetListContainer.innerHTML = '<p style="text-align:center;color:#999;padding:10px;">暂无预设</p>';
+            return;
+        }
+        presets.forEach((p, idx) => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid #f0f0f0;';
+
+            const nameDiv = document.createElement('div');
+            nameDiv.style.cssText = 'flex:1;font-weight:500;';
+            nameDiv.textContent = p.name;
+
+            const btnWrap = document.createElement('div');
+            btnWrap.style.cssText = 'display:flex;gap:6px;';
+
+            const renameBtn = document.createElement('button');
+            renameBtn.className = 'btn btn-small';
+            renameBtn.textContent = '重命名';
+            renameBtn.onclick = () => {
+                const newName = prompt('输入新名称：', p.name);
+                if (!newName || !newName.trim() || newName.trim() === p.name) return;
+                const all = _getPresets();
+                all[idx].name = newName.trim();
+                _savePresets(all);
+                populatePresets();
+                renderPresetsList();
+            };
+
+            const delBtn = document.createElement('button');
+            delBtn.className = 'btn btn-danger btn-small';
+            delBtn.textContent = '删除';
+            delBtn.onclick = () => {
+                if (!confirm(`确定删除预设：${p.name}？`)) return;
+                const all = _getPresets();
+                all.splice(idx, 1);
+                _savePresets(all);
+                populatePresets();
+                renderPresetsList();
+            };
+
+            btnWrap.appendChild(renameBtn);
+            btnWrap.appendChild(delBtn);
+            row.appendChild(nameDiv);
+            row.appendChild(btnWrap);
+            presetListContainer.appendChild(row);
+        });
+    }
+
+    if (managePresetBtn) {
+        managePresetBtn.addEventListener('click', () => {
+            if (!manageModal) return;
+            renderPresetsList();
+            manageModal.style.display = 'flex';
+        });
+    }
+
+    if (closeModalBtn) {
+        closeModalBtn.addEventListener('click', () => {
+            if (manageModal) manageModal.style.display = 'none';
+        });
+    }
+
+    if (exportPresetBtn) {
+        exportPresetBtn.addEventListener('click', () => {
+            const presets = _getPresets();
+            if (presets.length === 0) return showToast('暂无预设可导出');
+            const safePresets = presets.map(p => ({ ...p, data: { ...(p.data || {}), key: '' } }));
+            const blob = new Blob([JSON.stringify(safePresets, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${title}_Image_Presets_${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast(`${title} 生图预设已导出`);
+        });
+    }
+
+    if (importPresetBtn) {
+        importPresetBtn.addEventListener('click', () => {
+            const inp = document.createElement('input');
+            inp.type = 'file';
+            inp.accept = '.json';
+            inp.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                try {
+                    const text = await file.text();
+                    const imported = JSON.parse(text);
+                    if (!Array.isArray(imported)) {
+                        showToast('格式不正确：需要预设数组');
+                        return;
+                    }
+                    const presets = _getPresets();
+                    imported.forEach(p => {
+                        if (p.name && p.data) {
+                            const idx = presets.findIndex(exist => exist.name === p.name);
+                            if (idx >= 0) presets[idx] = p;
+                            else presets.push(p);
+                        }
+                    });
+                    _savePresets(presets);
+                    populatePresets();
+                    showToast(`成功导入 ${imported.length} 个 ${title} 预设`);
+                } catch (err) {
+                    showToast('导入失败：' + err.message);
+                }
+            };
+            inp.click();
+        });
+    }
 }
 
 function setupImageAtmosphereGroups() {
@@ -1130,4 +1380,3 @@ function setupImageAtmosphereGroups() {
     renderSelect();
     loadSelected();
 }
-

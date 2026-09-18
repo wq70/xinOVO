@@ -59,6 +59,10 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
 
     const chat = (chatType === 'private') ? db.characters.find(c => c.id === chatId) : db.groups.find(g => g.id === chatId);
     if (!chat) return;
+    const backgroundReason = replyOptions.backgroundReason || 'inactivity';
+    const backgroundInstruction = backgroundReason === 'followUp'
+        ? `[系统通知：你刚刚已经回复过用户，但用户暂时还没有接话。请以${chat.realName}的身份，根据最近对话、人设、关系与当前时间，自然地追加一轮较简短的表达。可以补充刚想到的内容、延续上一话题、分享情绪或轻微追问；不要解释为何再次发送，不要提及系统、概率或等待规则，不要重复上一轮，也不要责怪或催促用户回复。]`
+        : `[系统通知：距离上次互动已有一段时间。请以${chat.realName}的身份主动发起新话题，或自然地延续之前的对话。]`;
     const latestTurnProtectionEnabled = !isBackground && !isSummary && !!db.apiSettings?.latestTurnProtectionEnabled;
     let latestTurnIds = [];
     const recordLatestTurnProtectionCheck = check => {
@@ -82,15 +86,31 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             emptyError.name = 'EmptyReplyError';
             throw emptyError;
         }
+        if (backgroundReason === 'followUp' && window.FollowUpReply) {
+            const canFinalize = await window.FollowUpReply.confirmBeforeFinalize(chatId, replyOptions.followUpTaskId || '');
+            if (!canFinalize) {
+                const cancelledError = new Error('追发任务已因用户新消息或对话状态变化取消');
+                cancelledError.name = 'FollowUpCancelledError';
+                throw cancelledError;
+            }
+        }
         if (replyTask) await window.ReplyResilience.markFinalizing(replyTask, fullResponse);
         const historyLengthBefore = Array.isArray(chat.history) ? chat.history.length : 0;
-        await handleAiReplyContent(fullResponse, chat, chatId, chatType, isBackground, isCharBlockedMonologue);
+        await handleAiReplyContent(fullResponse, chat, chatId, chatType, isBackground, isCharBlockedMonologue, replyOptions);
         if (replyTask && Array.isArray(chat.history)) {
             chat.history.slice(historyLengthBefore).forEach(message => {
                 if (message && !message.replyRequestId) message.replyRequestId = replyTask.id;
             });
             await persistTargetChat();
             await window.ReplyResilience.complete(replyTask);
+        }
+        if (!isBackground && !isSummary && chatType === 'private' && window.FollowUpReply) {
+            try {
+                await window.FollowUpReply.scheduleAfterReply(chatId, chat.history.slice(historyLengthBefore));
+            } catch (followUpScheduleError) {
+                // 追发任务属于附加能力，保存失败不能把已经成功展示的正常回复判为失败。
+                console.warn('[FollowUpReply] could not schedule follow-up:', followUpScheduleError);
+            }
         }
     };
 
@@ -405,7 +425,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             if (isBackground) {
                 contents.push({
                     role: 'user',
-                    parts: [{ text: `[系统通知：距离上次互动已有一段时间。请以${chat.realName}的身份主动发起新话题，或自然地延续之前的对话。]` }]
+                    parts: [{ text: backgroundInstruction }]
                 });
             }
             if (isCharBlockedMonologue) {
@@ -580,7 +600,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             if (isBackground) {
                 messages.push({
                     role: 'user',
-                    content: `[系统通知：距离上次互动已有一段时间。请以${chat.realName}的身份主动发起新话题，或自然地延续之前的对话。]`
+                    content: backgroundInstruction
                 });
             }
             if (isCharBlockedMonologue) {
@@ -959,11 +979,17 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
 
     } catch (error) {
         if (replyTask && window.ReplyResilience) {
-            try { await window.ReplyResilience.fail(replyTask, error, error.name === 'AbortError'); } catch (_) { /* preserve original error handling */ }
+            try {
+                await window.ReplyResilience.fail(
+                    replyTask,
+                    error,
+                    error.name === 'AbortError' || error.name === 'FollowUpCancelledError'
+                );
+            } catch (_) { /* preserve original error handling */ }
         }
         if (error.name === 'AbortError') {
             if (!isBackground && typeof showToast === 'function') showToast('已暂停调用');
-        } else {
+        } else if (error.name !== 'FollowUpCancelledError') {
             if (!isBackground) showApiError(error);
             else console.error("Background Auto-Reply Error:", error);
         }

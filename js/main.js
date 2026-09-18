@@ -129,6 +129,7 @@ const init = async () => {
     if (typeof NodeSystem !== 'undefined') NodeSystem.init();
     if (typeof KeepAliveModule !== 'undefined') KeepAliveModule.init();
     if (window.ReplyResilience) await window.ReplyResilience.init();
+    if (window.PokeSystem) window.PokeSystem.init();
 
     // 全局事件绑定
     const delWBBtn = document.getElementById('delete-selected-world-books-btn');
@@ -188,8 +189,11 @@ async function checkAutoReply() {
     autoReplyCheckRunning = true;
     const now = Date.now();
     try {
+      if (window.FollowUpReply) await window.FollowUpReply.checkDue();
       for (const char of db.characters) {
         if (char.autoReply && char.autoReply.enabled) {
+            // 已排定的回复后追发优先，避免两种主动消息抢在一起发送。
+            if (window.FollowUpReply && window.FollowUpReply.hasPending(char)) continue;
             const mode = char.autoReply.mode || 'fixed';
             let intervalMs;
             
@@ -230,6 +234,7 @@ async function checkAutoReply() {
                 const succeeded = await getAiReply(char.id, 'private', true);
                 if (succeeded) {
                     const completedAt = Date.now();
+                    if (window.FollowUpReply) window.FollowUpReply.markOtherBackgroundSuccess(char, completedAt);
                     char.autoReply.lastTriggerTime = completedAt;
                     char.autoReply.lastSuccessTime = completedAt;
                     char.autoReply.retryAt = 0;

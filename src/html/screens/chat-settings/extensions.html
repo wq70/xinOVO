@@ -315,6 +315,58 @@
                                     </div>
                                 </div>
                                 <div class="kkt-item">
+                                    <div class="kkt-item-label">角色回复后继续追发</div>
+                                    <div class="kkt-item-control">
+                                        <label class="kkt-switch">
+                                            <input type="checkbox" id="setting-follow-up-enabled">
+                                            <span class="kkt-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div id="setting-follow-up-options" class="follow-up-settings" style="display:none;">
+                                    <div class="kkt-item">
+                                        <div class="kkt-item-label">等待模式</div>
+                                        <div class="kkt-item-control">
+                                            <select id="setting-follow-up-mode" class="follow-up-select">
+                                                <option value="fixed">固定时间</option>
+                                                <option value="random">随机区间</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="kkt-item" id="setting-follow-up-fixed-container" style="display:none;">
+                                        <div class="kkt-item-label">等待时间（小时）</div>
+                                        <div class="kkt-item-control">
+                                            <input type="number" id="setting-follow-up-fixed-hours" class="follow-up-number" value="2" min="0.083" max="168" step="any" inputmode="decimal">
+                                        </div>
+                                    </div>
+                                    <div class="kkt-item" id="setting-follow-up-random-container">
+                                        <div class="kkt-item-label">等待区间（小时）</div>
+                                        <div class="kkt-item-control follow-up-range-control">
+                                            <input type="number" id="setting-follow-up-min-hours" class="follow-up-number" value="1" min="0.083" max="168" step="any" inputmode="decimal" aria-label="最短等待小时数">
+                                            <span aria-hidden="true">–</span>
+                                            <input type="number" id="setting-follow-up-max-hours" class="follow-up-number" value="3" min="0.083" max="168" step="any" inputmode="decimal" aria-label="最长等待小时数">
+                                        </div>
+                                    </div>
+                                    <div class="kkt-item">
+                                        <div class="kkt-item-label">追发概率</div>
+                                        <div class="kkt-item-control follow-up-probability-control">
+                                            <input type="range" id="setting-follow-up-probability" min="0" max="100" step="1" value="35" aria-label="追发概率">
+                                            <span id="setting-follow-up-probability-value">35%</span>
+                                        </div>
+                                    </div>
+                                    <div class="kkt-item">
+                                        <div class="kkt-item-label">单次最多追发</div>
+                                        <div class="kkt-item-control">
+                                            <select id="setting-follow-up-max-count" class="follow-up-select">
+                                                <option value="1">1 轮</option>
+                                                <option value="2">2 轮</option>
+                                                <option value="3">3 轮</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="follow-up-hint">你在等待期间发送任何消息都会取消本次追发；多轮追发的触发概率会逐轮降低。</div>
+                                </div>
+                                <div class="kkt-item">
                                     <div class="kkt-item-label">免打扰时段</div>
                                     <div class="kkt-item-control">
                                         <label class="kkt-switch">

@@ -102,6 +102,30 @@
                             <div id="google-image-test-preview" class="api-preview-card" style="display:none;">
                                 <img id="google-image-test-image" alt="Google 生图测试结果">
                             </div>
+
+                            <!-- Google 预设紧凑条 -->
+                            <div class="api-sub-presets-strip" id="google-image-presets-control">
+                                <span class="api-sub-presets-label">预设:</span>
+                                <select id="google-image-preset-select" class="api-sub-preset-select">
+                                    <option value="">— 选择 —</option>
+                                </select>
+                                <div class="api-sub-preset-btns">
+                                    <button type="button" id="google-image-apply-preset" class="btn btn-small btn-primary">应用</button>
+                                    <button type="button" id="google-image-save-preset" class="btn btn-small btn-secondary">另存</button>
+                                    <button type="button" id="google-image-manage-presets" class="btn btn-small btn-neutral">管理</button>
+                                    <button type="button" id="google-image-import-presets" class="btn btn-small btn-neutral">导入</button>
+                                    <button type="button" id="google-image-export-presets" class="btn btn-small btn-neutral">导出</button>
+                                </div>
+                            </div>
+                            <div id="google-image-presets-modal" class="api-modal-backdrop">
+                                <div class="api-clean-modal">
+                                    <h3>Google 生图预设管理</h3>
+                                    <div id="google-image-presets-list" class="api-modal-scroll-list"></div>
+                                    <div class="api-modal-footer">
+                                        <button type="button" id="google-image-close-modal" class="btn btn-primary">完成</button>
+                                    </div>
+                                </div>
+                            </div>
                         </section>
 
                         <!-- Stability AI 生图 -->
@@ -204,6 +228,30 @@
                             </div>
                             <div id="stability-image-test-preview" class="api-preview-card" style="display:none;">
                                 <img id="stability-image-test-image" alt="Stability 生图测试结果">
+                            </div>
+
+                            <!-- Stability 预设紧凑条 -->
+                            <div class="api-sub-presets-strip" id="stability-image-presets-control">
+                                <span class="api-sub-presets-label">预设:</span>
+                                <select id="stability-image-preset-select" class="api-sub-preset-select">
+                                    <option value="">— 选择 —</option>
+                                </select>
+                                <div class="api-sub-preset-btns">
+                                    <button type="button" id="stability-image-apply-preset" class="btn btn-small btn-primary">应用</button>
+                                    <button type="button" id="stability-image-save-preset" class="btn btn-small btn-secondary">另存</button>
+                                    <button type="button" id="stability-image-manage-presets" class="btn btn-small btn-neutral">管理</button>
+                                    <button type="button" id="stability-image-import-presets" class="btn btn-small btn-neutral">导入</button>
+                                    <button type="button" id="stability-image-export-presets" class="btn btn-small btn-neutral">导出</button>
+                                </div>
+                            </div>
+                            <div id="stability-image-presets-modal" class="api-modal-backdrop">
+                                <div class="api-clean-modal">
+                                    <h3>Stability 生图预设管理</h3>
+                                    <div id="stability-image-presets-list" class="api-modal-scroll-list"></div>
+                                    <div class="api-modal-footer">
+                                        <button type="button" id="stability-image-close-modal" class="btn btn-primary">完成</button>
+                                    </div>
+                                </div>
                             </div>
                         </section>
 

@@ -9,6 +9,14 @@ function setupChatSettings() {
         option.textContent = colorThemes[key].name;
         themeSelect.appendChild(option);
     });
+
+    const pokeEnabled = document.getElementById('setting-poke-enabled');
+    const pokeOptions = document.getElementById('setting-poke-options');
+    if (pokeEnabled && pokeOptions) {
+        pokeEnabled.addEventListener('change', () => {
+            pokeOptions.style.display = pokeEnabled.checked ? 'block' : 'none';
+        });
+    }
     
     document.getElementById('chat-settings-btn')?.addEventListener('click', () => {
         if (currentChatType === 'private') {

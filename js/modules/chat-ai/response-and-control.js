@@ -175,7 +175,7 @@ function executePhoneControlCommands(text, controllingChar) {
     return { cleaned, executed };
 }
 
-async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false) {
+async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false, replyOptions = {}) {
     const rawResponse = fullResponse;
     const saveReplyTargetChat = async () => {
         if (targetChatType === 'group' && typeof saveGroup === 'function') return saveGroup(targetChatId);
@@ -272,6 +272,16 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
             }
             // 从即将显示的文本中移除思考内容
             fullResponse = fullResponse.replace(thinkingContent, "");
+        }
+
+        // 1.75 在思考内容移除后再提取拍一拍，避免误执行思维链中的示例。
+        if (window.PokeSystem) {
+            const pokeResult = window.PokeSystem.consumeAiCommands(fullResponse, chat, targetChatType);
+            fullResponse = pokeResult.cleaned;
+            pokeResult.messages.forEach(message => {
+                addMessageBubble(message, targetChatId, targetChatType);
+                window.PokeSystem.playFeedback(message, chat);
+            });
         }
 
         // 1.8 节点系统：提取摘要
@@ -802,7 +812,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
 
         // 角色主动生成小剧场（仅私聊，按概率触发）
         // 直接调用，无延迟——generateCharTheater 内部会立即推送通知气泡
-        if (targetChatType === 'private' && typeof maybeGenerateCharTheater === 'function') {
+        if (targetChatType === 'private' && replyOptions.backgroundReason !== 'followUp' && typeof maybeGenerateCharTheater === 'function') {
             maybeGenerateCharTheater(targetChatId);
         }
     }

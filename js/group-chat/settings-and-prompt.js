@@ -152,6 +152,29 @@ function loadGroupSettingsToSidebar() {
     document.getElementById('setting-group-timestamp-style').value = group.timestampStyle || 'bubble';
     document.getElementById('setting-group-timestamp-format').value = group.timestampFormat || 'hm';
     document.getElementById('setting-group-allow-gossip').checked = group.allowGossip || false;
+    if (window.PokeSystem) window.PokeSystem.ensureSettings(group);
+    const groupPokeEnabledEl = document.getElementById('setting-group-poke-enabled');
+    const groupPokeOptionsEl = document.getElementById('setting-group-poke-options');
+    if (groupPokeEnabledEl) groupPokeEnabledEl.checked = group.pokeEnabled === true;
+    if (groupPokeOptionsEl) groupPokeOptionsEl.style.display = group.pokeEnabled === true ? 'block' : 'none';
+    const groupPokeCharacterEl = document.getElementById('setting-group-poke-character-initiated');
+    if (groupPokeCharacterEl) groupPokeCharacterEl.checked = group.pokeAllowCharacterInitiated !== false;
+    const groupPokeMemberEl = document.getElementById('setting-group-poke-member-to-member');
+    if (groupPokeMemberEl) groupPokeMemberEl.checked = group.pokeAllowMemberToMember !== false;
+    const groupPokeSelfEl = document.getElementById('setting-group-poke-self');
+    if (groupPokeSelfEl) groupPokeSelfEl.checked = group.pokeAllowSelf !== false;
+    const groupPokeReplyEl = document.getElementById('setting-group-poke-trigger-reply');
+    if (groupPokeReplyEl) groupPokeReplyEl.checked = group.pokeTriggerReply !== false;
+    const groupPokeUserSuffixEl = document.getElementById('setting-group-poke-user-suffix');
+    if (groupPokeUserSuffixEl) groupPokeUserSuffixEl.value = group.pokeUserSuffix || '';
+    const groupPokeEffectEl = document.getElementById('setting-group-poke-effect-mode');
+    if (groupPokeEffectEl) groupPokeEffectEl.value = group.pokeEffectMode || 'full';
+    const groupPokeVibrationEl = document.getElementById('setting-group-poke-vibration');
+    if (groupPokeVibrationEl) groupPokeVibrationEl.checked = group.pokeVibrationEnabled !== false;
+    const groupPokeNotificationEl = document.getElementById('setting-group-poke-notification-mode');
+    if (groupPokeNotificationEl) groupPokeNotificationEl.value = group.pokeNotificationMode || 'in_chat';
+    const groupPokeContextEl = document.getElementById('setting-group-poke-context');
+    if (groupPokeContextEl) groupPokeContextEl.checked = group.pokeContextEnabled !== false;
 
     const bilingualModeCheckbox = document.getElementById('setting-group-bilingual-mode');
     const bilingualStyleSelect = document.getElementById('setting-group-bilingual-style');
@@ -463,6 +486,26 @@ async function saveGroupSettingsFromSidebar(showToastFlag = true) {
 
     group.theme = document.getElementById('setting-group-theme-color').value;
     group.maxMemory = document.getElementById('setting-group-max-memory').value;
+    const groupPokeEnabledEl = document.getElementById('setting-group-poke-enabled');
+    group.pokeEnabled = !!(groupPokeEnabledEl && groupPokeEnabledEl.checked);
+    const groupPokeCharacterEl = document.getElementById('setting-group-poke-character-initiated');
+    group.pokeAllowCharacterInitiated = !groupPokeCharacterEl || groupPokeCharacterEl.checked;
+    const groupPokeMemberEl = document.getElementById('setting-group-poke-member-to-member');
+    group.pokeAllowMemberToMember = !groupPokeMemberEl || groupPokeMemberEl.checked;
+    const groupPokeSelfEl = document.getElementById('setting-group-poke-self');
+    group.pokeAllowSelf = !groupPokeSelfEl || groupPokeSelfEl.checked;
+    const groupPokeReplyEl = document.getElementById('setting-group-poke-trigger-reply');
+    group.pokeTriggerReply = !groupPokeReplyEl || groupPokeReplyEl.checked;
+    const groupPokeUserSuffixEl = document.getElementById('setting-group-poke-user-suffix');
+    group.pokeUserSuffix = window.PokeSystem ? window.PokeSystem.cleanSuffix(groupPokeUserSuffixEl && groupPokeUserSuffixEl.value) : ((groupPokeUserSuffixEl && groupPokeUserSuffixEl.value) || '').trim();
+    const groupPokeEffectEl = document.getElementById('setting-group-poke-effect-mode');
+    group.pokeEffectMode = groupPokeEffectEl ? groupPokeEffectEl.value : 'full';
+    const groupPokeVibrationEl = document.getElementById('setting-group-poke-vibration');
+    group.pokeVibrationEnabled = !groupPokeVibrationEl || groupPokeVibrationEl.checked;
+    const groupPokeNotificationEl = document.getElementById('setting-group-poke-notification-mode');
+    group.pokeNotificationMode = groupPokeNotificationEl ? groupPokeNotificationEl.value : 'in_chat';
+    const groupPokeContextEl = document.getElementById('setting-group-poke-context');
+    group.pokeContextEnabled = !groupPokeContextEl || groupPokeContextEl.checked;
 
     // --- 群聊 <- 私聊：群成员私聊记忆互通 ---
     const syncPrivateMemoryEl = document.getElementById('setting-group-sync-private-memory');
@@ -557,6 +600,8 @@ function openGroupMemberEditModal(memberId) {
     document.getElementById('edit-member-group-nickname').value = member.groupNickname;
     document.getElementById('edit-member-real-name').value = member.realName;
     document.getElementById('edit-member-persona').value = member.persona;
+    const pokeSuffixInput = document.getElementById('edit-member-poke-suffix');
+    if (pokeSuffixInput) pokeSuffixInput.value = member.pokeSuffix || '';
     document.getElementById('edit-group-member-modal').classList.add('visible');
 }
 
@@ -820,6 +865,10 @@ function generateGroupSystemPrompt(group, opts) {
 - **照片/视频**: \`[{成员真名}发来的照片/视频：{内容描述}]\`
 - **转账**: \`[{发起者真名} 向 {接收者真名} 转账：{金额}元；备注：{备注}]\``;
 
+    if (group.pokeEnabled && group.pokeAllowCharacterInitiated !== false) {
+        outputFormats += `\n- **拍一拍**: \`[POKE:actor={发起成员真名}|target={用户或目标成员真名}]\``;
+    }
+
     if (group.allowGossip) {
         outputFormats += `
 - **私聊消息**: \`[Private: {发起者真名} -> {接收者真名}: {内容}]\`
@@ -833,6 +882,10 @@ function generateGroupSystemPrompt(group, opts) {
    
     prompt += `4. **你的输出格式 (极其重要)**: 你生成的每一条消息都 **必须** 严格遵循以下格式之一。每条消息占一行。请用成员的 **真名** 填充格式中的 \`{成员真名}\`。\n${outputFormats}\n\n`;
     
+    if (group.pokeEnabled && group.pokeAllowCharacterInitiated !== false) {
+        prompt += `【拍一拍规则】历史中的“拍一拍事件”全群可见，被拍者可回拍、简短回应或忽略，其他成员只在符合人设和语境时反应。这是低频轻互动，不得每轮使用，不计入普通回复条数，单轮最多2次。${group.pokeAllowMemberToMember === false ? '禁止群成员之间互拍，只能拍用户或自己。' : ''}\n\n`;
+    }
+
     if (group.bilingualModeEnabled) {
         let bilingualTargetText = "群成员";
         if (group.bilingualMembers && group.bilingualMembers.length > 0) {

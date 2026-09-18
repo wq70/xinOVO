@@ -167,14 +167,14 @@ if (retainedLegacyTagErrors.length > 1) {
 }
 
 const logicalInfo = collectDocumentInfo(logicalDocument);
-const protectedDomSignature = '88a54c6656d6e8d39caf2f9346bc54fb8de957108d5fc2d21b94484ec050f427';
+const protectedDomSignature = 'c59c244e3cd1a9c14816662c22553d025a3555f7d19e2b78585e41f46a6ed1e9';
 const actualDomSignature = getNonScriptDomSignature(logicalDocument);
 if (actualDomSignature !== protectedDomSignature) {
     fail(`Assembled non-script DOM differs from the protected pre-split structure: ${actualDomSignature}`);
 }
 const textualIds = [...logicalHtml.matchAll(/\bid\s*=\s*["']([^"']+)["']/gi)].map(match => match[1]);
 const duplicateIds = [...new Set(textualIds.filter((id, index) => textualIds.indexOf(id) !== index))];
-if (textualIds.length !== 2343) fail(`Expected 2343 assembled IDs, found ${textualIds.length}`);
+if (textualIds.length !== 2397) fail(`Expected 2397 assembled IDs, found ${textualIds.length}`);
 if (duplicateIds.length) fail(`Duplicate assembled IDs: ${duplicateIds.join(', ')}`);
 
 const requiredIds = [
@@ -187,6 +187,9 @@ const requiredIds = [
     'ios-pwa-status-bar-guard',
     'keep-alive-auto-wake-enabled', 'keep-alive-use-builtin-btn', 'keep-alive-playback-status',
     'keep-alive-page-status', 'keep-alive-wake-status', 'keep-alive-task-status',
+    'setting-follow-up-enabled', 'setting-follow-up-options', 'setting-follow-up-probability',
+    'setting-poke-enabled', 'setting-poke-options', 'setting-poke-char-suffix',
+    'setting-group-poke-enabled', 'setting-group-poke-options', 'setting-group-poke-member-btn',
 ];
 for (const id of requiredIds) {
     if (!logicalInfo.ids.includes(id)) fail(`Required assembled UI element is missing: #${id}`);

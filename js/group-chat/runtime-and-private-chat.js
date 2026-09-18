@@ -75,6 +75,7 @@ function setupGroupChatSystem() {
                 maxMemory: 100,
                 chatBg: '',
                 history: [],
+                pokeEnabled: false,
                 isPinned: false,
                 unreadCount: 0,
                 useCustomBubbleCss: false,
@@ -106,6 +107,7 @@ function setupGroupChatSystem() {
     const groupAutoSaveInputs = [
         'setting-group-name', 'setting-group-my-nickname', 'setting-group-my-persona',
         'setting-group-max-memory', 'setting-group-auto-journal-interval', 'setting-group-custom-bubble-css', 'setting-group-notice',
+        'setting-group-poke-user-suffix',
         'setting-group-private-memory-history-count', 'setting-group-private-memory-summary-count'
     ];
     groupAutoSaveInputs.forEach(id => {
@@ -117,6 +119,9 @@ function setupGroupChatSystem() {
         'setting-group-theme-color', 'setting-group-use-custom-css', 'setting-group-show-timestamp',
         'setting-group-show-notice', 'setting-group-allow-gossip', 'setting-group-avatar-radius',
         'setting-group-bilingual-mode', 'setting-group-bilingual-style', 'setting-group-auto-journal-enabled',
+        'setting-group-poke-enabled', 'setting-group-poke-character-initiated', 'setting-group-poke-member-to-member',
+        'setting-group-poke-self', 'setting-group-poke-trigger-reply', 'setting-group-poke-effect-mode',
+        'setting-group-poke-vibration', 'setting-group-poke-notification-mode', 'setting-group-poke-context',
         'setting-group-timestamp-format'
     ];
     groupAutoSaveChanges.forEach(id => {
@@ -287,6 +292,10 @@ function setupGroupChatSystem() {
                 member.groupNickname = document.getElementById('edit-member-group-nickname').value;
                 member.realName = document.getElementById('edit-member-real-name').value;
                 member.persona = document.getElementById('edit-member-persona').value;
+                const pokeSuffixInput = document.getElementById('edit-member-poke-suffix');
+                const pokeSuffix = window.PokeSystem ? window.PokeSystem.cleanSuffix(pokeSuffixInput && pokeSuffixInput.value) : ((pokeSuffixInput && pokeSuffixInput.value) || '').trim();
+                if (pokeSuffix) member.pokeSuffix = pokeSuffix;
+                else delete member.pokeSuffix;
                 await saveGroup(group.id);
                 renderGroupMembersInSettings(group);
                 document.querySelectorAll(`.message-wrapper[data-sender-id="${member.id}"] .group-nickname`).forEach(el => {

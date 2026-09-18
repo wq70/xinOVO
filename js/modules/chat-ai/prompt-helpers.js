@@ -282,6 +282,10 @@ m) 同意代付(此条不显示): [${character.realName}同意了${character.myN
 n) 拒绝代付(此条不显示): [${character.realName}拒绝了${character.myName}的代付请求]
 s) 发送我的位置: [${character.realName}的位置：{地点}；距你约 {数字}{单位}]（必填：地点，即你当前所在位置；选填：距你约的数字和单位，单位可用米/千米/公里，不填则只发地点）`;
 
+    if (character.pokeEnabled && character.pokeAllowCharacterInitiated !== false) {
+        outputFormats += `\nu) 拍一拍（此条渲染为居中轻互动）: [POKE:actor=${character.realName}|target=用户] 或 [POKE:actor=${character.realName}|target=${character.realName}]`;
+    }
+
     if (character.videoCallEnabled) {
         outputFormats += `
 q) 发起视频通话: [${character.realName}向${character.myName}发起了视频通话]

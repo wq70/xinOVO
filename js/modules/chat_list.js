@@ -467,7 +467,9 @@ function renderChatList() {
                 const stickerRegex = /\[.*?的表情包：.*?\]|\[.*?发送的表情包：.*?\]/;
                 const giftRegex = /\[.*?送来的礼物：.*?\]|\[.*?向.*?送来了礼物：.*?\]/;
 
-                if (giftRegex.test(lastMsg.content)) {
+                if (lastMsg.type === 'poke') {
+                    lastMessageText = lastMsg.displayText || '拍一拍';
+                } else if (giftRegex.test(lastMsg.content)) {
                     lastMessageText = '[礼物]';
                 } else if (stickerRegex.test(lastMsg.content)) {
                     lastMessageText = '[表情包]';

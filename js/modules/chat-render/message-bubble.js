@@ -34,6 +34,10 @@ function createMessageBubbleElement(message, isContinuous = false) {
     // 拦截：hiddenFromDisplay 标记的消息（如角色自知上下文消息），不渲染成气泡
     if (message.hiddenFromDisplay && !isDebugMode) return null;
 
+    if (message.type === 'poke' && window.PokeSystem) {
+        return window.PokeSystem.renderMessage(message, chat);
+    }
+
     // MCP 活动卡是用户可见的执行状态，但永远不作为普通聊天内容发回模型。
     if (message.type === 'mcp_activity' && window.mcpManager && typeof window.mcpManager.renderMessageCard === 'function') {
         const wrapper = document.createElement('div');
@@ -261,6 +265,8 @@ const contentMatch = content.match(/^\[.*?(?:消息|回复)[：:]([\s\S]+)\]$/);
         const avatarImg = document.createElement('img');
         avatarImg.src = avatarUrl;
         avatarImg.className = avatarClass;
+        avatarImg.dataset.pokeTargetId = senderId || chat.id;
+        avatarImg.setAttribute('aria-label', `${senderNickname || chat.remarkName || chat.realName || '角色'}头像，连点两次拍一拍`);
         messageInfo.appendChild(avatarImg);
 
         if (timestampStyle === 'avatar') {
@@ -1241,6 +1247,8 @@ const contentMatch = content.match(/^\[.*?(?:消息|回复)[：:]([\s\S]+)\]$/);
     const avatarImg = document.createElement('img');
     avatarImg.src = avatarUrl;
     avatarImg.className = avatarClass;
+    avatarImg.dataset.pokeTargetId = messageSenderId || (currentChatType === 'private' ? chat.id : '');
+    avatarImg.setAttribute('aria-label', `${isSent ? '我' : (senderNickname || chat.remarkName || chat.realName || '角色')}的头像，连点两次拍一拍`);
     messageInfo.appendChild(avatarImg);
 
     if (timestampStyle === 'avatar') {

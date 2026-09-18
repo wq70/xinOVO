@@ -1830,6 +1830,8 @@
         const openFromSettingsBtn = document.getElementById('setting-open-vector-memory-btn');
         if (openFromSettingsBtn) {
             openFromSettingsBtn.addEventListener('click', () => {
+                const backBtn = document.querySelector('#vector-memory-screen .back-btn');
+                if (backBtn) backBtn.setAttribute('data-target', 'chat-settings-screen');
                 renderVectorMemoryScreen();
                 switchScreen('vector-memory-screen');
             });

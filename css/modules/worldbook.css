@@ -6,6 +6,16 @@
     background-color: transparent;
 }
 
+#world-book-search-bar,
+#world-book-detail-search-bar {
+    background: #ffffff !important;
+}
+
+#world-book-search-bar .search-input-wrapper,
+#world-book-detail-search-bar .search-input-wrapper {
+    background-color: #ffffff !important;
+}
+
 #chat-list-screen .content,
 #world-book-screen .content,
 #world-book-detail-screen .content {

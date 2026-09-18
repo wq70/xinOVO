@@ -125,6 +125,10 @@ function generatePrivateSystemPrompt(character, opts) {
         template = template.replace(/\{\{输出格式\}\}/g, outputFormats || '');
         template = template.replace(/\{\{天气信息\}\}/g, opts.weatherText || '');
 
+        if (character.pokeEnabled && character.pokeAllowCharacterInitiated !== false) {
+            template += `\n【拍一拍】当历史中出现“拍一拍事件”时，请结合关系和当前语境自然反应，可回拍、简短回应或不说话。拍一拍是低频轻互动，不得每轮使用，不计入普通回复条数，单轮最多2次。\n`;
+        }
+
         if (opts.weatherText && !template.includes('<environment>')) {
              template += opts.weatherText;
         }
@@ -838,6 +842,10 @@ function generatePrivateSystemPrompt(character, opts) {
     prompt += `<output_formats>\n`
     prompt += `16. 你的输出格式必须严格遵循以下格式：${getOnlineOutputFormats(character, worldBooksBefore, worldBooksAfter)}\n`;
     prompt += `</output_formats>\n`
+
+    if (character.pokeEnabled && character.pokeAllowCharacterInitiated !== false) {
+        prompt += `【拍一拍】你可以偶尔使用 [POKE:actor=${character.realName}|target=用户] 主动拍用户，也可用 [POKE:actor=${character.realName}|target=${character.realName}] 拍自己。当历史中出现“拍一拍事件”时，请结合关系和当前语境自然反应，可以回拍、简短回应或不说话。拍一拍是低频轻互动，不得每轮使用，不计入普通回复条数，单轮最多使用2次。\n`;
+    }
 
     if (character.bilingualModeEnabled) {
         prompt += `✨双语模式特别指令✨：当你的角色的母语为中文以外的语言时，你的消息回复**必须**严格遵循双语模式下的普通消息格式：[${character.realName}的消息：{外语原文}「中文翻译」],例如: [${character.realName}的消息：Of course, I'd love to.「当然，我很乐意。」],中文翻译文本视为系统自翻译，不视为角色的原话;当你的角色想要说中文时，需要根据你的角色设定自行判断对于中文的熟悉程度来造句，并使用普通消息的标准格式: [${character.realName}的消息：{中文消息内容}] 。**语音消息**在双语模式下也须使用相同格式：[${character.realName}的语音：{外语原文}「中文翻译」]，例如：[${character.realName}的语音：Of course, I'd love to.「当然，我很乐意。」]。这条规则的优先级非常高，请务必遵守。\n`;

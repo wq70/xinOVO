@@ -594,6 +594,20 @@ const loadData = async () => {
                 lastTriggerTime: 0
             };
         }
+        if (!c.followUpReply || typeof c.followUpReply !== 'object') {
+            c.followUpReply = {
+                enabled: false,
+                delayMode: 'random',
+                fixedDelayMinutes: 120,
+                minDelayMinutes: 60,
+                maxDelayMinutes: 180,
+                probability: 35,
+                maxFollowUps: 1,
+                pending: null,
+                lastSuccessAt: 0,
+                lastDecision: null
+            };
+        }
         if (!c.gallery) c.gallery = [];
         if (c.useRealGallery === undefined) c.useRealGallery = false;
         if (!c.callHistory) c.callHistory = [];

@@ -87,6 +87,9 @@ function addMessageBubble(message, targetChatId, targetChatType) {
     const senderChat = (targetChatType === 'private')
         ? db.characters.find(c => c.id === targetChatId)
         : db.groups.find(g => g.id === targetChatId);
+    const isLowDisturbancePoke = message.type === 'poke' && (
+        message.targetId !== 'user_me' || !senderChat || senderChat.pokeNotificationMode !== 'normal'
+    );
 
     // 特殊业务动作必须先于界面可见性分支处理，避免后台消息只出现文本、没有同步状态。
     if (targetChatType === 'private' && senderChat && window.WalletSystem && typeof window.WalletSystem.processFamilyCardActionMessage === 'function') {
@@ -130,12 +133,14 @@ function addMessageBubble(message, targetChatId, targetChatType) {
             else if (message.parts && message.parts.some(p => p.type === 'html')) previewText = '[互动]';
         }
 
+        if (message.type === 'poke') previewText = message.displayText || '拍一拍';
+
         notifTitle = (mr.sysNotifSenderName && mr.sysNotifSenderName.trim()) ? mr.sysNotifSenderName.trim() : senderName;
         notifBody  = mr.sysNotifShowContent !== false ? previewText.substring(0, 60) : '你有一条新消息';
         notifIcon  = mr.sysNotifShowAvatar !== false ? senderAvatar : undefined;
         
         // 当不在当前聊天，或者（在当前聊天且开启了页内通知）时，触发系统通知
-        if (!isViewingTargetChat || mr.sysNotifInChatEnabled) {
+        if ((!isViewingTargetChat || mr.sysNotifInChatEnabled) && !isLowDisturbancePoke) {
             shouldShowSystemNotification = true;
         }
     }
@@ -165,7 +170,7 @@ function addMessageBubble(message, targetChatId, targetChatType) {
                 // 在末尾添加 |<thinking>[\s\S]*?<\/thinking>
                 invisibleRegex = /\[system:.*?\]|\[系统情景通知：.*?\]|\[.*?更新状态为：.*?\]|\[.*?已接收礼物\]|\[.*?(?:接收|退回).*?的转账\]|\[.*?(?:接收|退还).*?的亲属卡\]|\[.*?(?:冻结|解冻|收回)了亲属卡\]|\[.*?调整亲属卡额度为：.*?\]|\[.*?同意了.*?的代付请求\]|\[.*?拒绝了.*?的代付请求\]|\[.*?拒绝了.*?的(?:视频|语音)通话\]|\[avatar-action:.*?\]|<thinking>[\s\S]*?<\/thinking>|^<thinking>[\s\S]*/;
             }
-            if (!invisibleRegex.test(message.content)) {
+            if (!invisibleRegex.test(message.content) && !isLowDisturbancePoke) {
                 senderChat.unreadCount = (senderChat.unreadCount || 0) + 1;
                 if (targetChatType === 'group' && typeof saveGroup === 'function') saveGroup(targetChatId);
                 else if (targetChatType === 'private' && typeof saveCharacter === 'function') saveCharacter(targetChatId);
@@ -204,10 +209,11 @@ function addMessageBubble(message, targetChatId, targetChatType) {
                 else if (/\[商城订单[：:].*?\]/.test(previewText)) previewText = '[商城订单]';
                 else if (message.parts && message.parts.some(p => p.type === 'html')) previewText = '[互动]';
             }
+            if (message.type === 'poke') previewText = message.displayText || '拍一拍';
             
             // === 后台消息弹窗通知开关检查 ===
             const isToastEnabled = senderChat.bgToastEnabled !== undefined ? senderChat.bgToastEnabled : (db.globalToastEnabled !== false);
-            if (isToastEnabled) {
+            if (isToastEnabled && !isLowDisturbancePoke) {
                 showToast({
                     avatar: senderAvatar,
                     name: senderName,
@@ -397,13 +403,13 @@ function addMessageBubble(message, targetChatId, targetChatType) {
                 // 修改：正则末尾增加了 |<thinking>[\s\S]*?<\/thinking>
                 invisibleRegex = /\[.*?(?:接收|退回).*?的转账\]|\[.*?(?:接收|退还).*?的亲属卡\]|\[.*?(?:冻结|解冻|收回)了亲属卡\]|\[.*?调整亲属卡额度为[：:].*?\]|\[.*?更新状态为：.*?\]|\[.*?已接收礼物\]|\[.*?同意了.*?的代付请求\]|\[.*?拒绝了.*?的代付请求\]|\[system:.*?\]|\[.*?邀请.*?加入了群聊\]|\[.*?修改群名为：.*?\]|\[system-display:.*?\]|\[.*?拒绝了.*?的(?:视频|语音)通话\]|\[avatar-action:.*?\]|<thinking>[\s\S]*?<\/thinking>|^<thinking>[\s\S]*/;
             }
-            const isSystemMsg = /\[system:.*?\]|\[system-display:.*?\]/.test(message.content);
+            const isSystemMsg = /\[system:.*?\]|\[system-display:.*?\]/.test(message.content) || message.type === 'poke';
 
             if (!isSystemMsg && character.history.length > 1) {
                 let prevMsg = null;
                 for (let i = character.history.length - 2; i >= 0; i--) {
                     const candidate = character.history[i];
-                    if (!invisibleRegex.test(candidate.content)) {
+                    if (candidate.type !== 'poke' && !invisibleRegex.test(candidate.content)) {
                         prevMsg = candidate;
                         break;
                     }
@@ -574,13 +580,13 @@ function addMessageBubble(message, targetChatId, targetChatType) {
             // 修改：正则末尾增加了 |<thinking>[\s\S]*?<\/thinking>
             invisibleRegex = /\[.*?(?:接收|退回).*?的转账\]|\[.*?更新状态为：.*?\]|\[.*?已接收礼物\]|\[system:.*?\]|\[.*?邀请.*?加入了群聊\]|\[.*?修改群名为：.*?\]|\[system-display:.*?\]|\[.*?拒绝了.*?的(?:视频|语音)通话\]|\[avatar-action:.*?\]|<thinking>[\s\S]*?<\/thinking>|^<thinking>[\s\S]*/;
         }
-        const isSystemMsg = /\[system:.*?\]|\[system-display:.*?\]/.test(message.content);
+        const isSystemMsg = /\[system:.*?\]|\[system-display:.*?\]/.test(message.content) || message.type === 'poke';
 
         if (!isSystemMsg && group.history.length > 1) {
             let prevMsg = null;
             for (let i = group.history.length - 2; i >= 0; i--) {
                 const candidate = group.history[i];
-                if (!invisibleRegex.test(candidate.content)) {
+            if (candidate.type !== 'poke' && !invisibleRegex.test(candidate.content)) {
                     prevMsg = candidate;
                     break;
                 }

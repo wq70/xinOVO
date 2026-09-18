@@ -279,6 +279,52 @@
                                 </div>
                             </div>
                             <div class="kkt-item">
+                                <div class="kkt-item-label">群聊拍一拍<p class="kkt-item-hint">开启后连点群成员头像两次</p></div>
+                                <div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="setting-group-poke-enabled"><span class="kkt-slider"></span></label></div>
+                            </div>
+                            <div id="setting-group-poke-options" class="poke-settings-options" style="display:none;">
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">允许群成员主动拍我</div>
+                                    <div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="setting-group-poke-character-initiated"><span class="kkt-slider"></span></label></div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">允许群成员互拍</div>
+                                    <div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="setting-group-poke-member-to-member"><span class="kkt-slider"></span></label></div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">允许拍自己</div>
+                                    <div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="setting-group-poke-self"><span class="kkt-slider"></span></label></div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">我拍后立即触发回复</div>
+                                    <div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="setting-group-poke-trigger-reply"><span class="kkt-slider"></span></label></div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">拍一拍群成员</div>
+                                    <div class="kkt-item-control"><button type="button" id="setting-group-poke-member-btn" class="btn btn-small btn-secondary">选择成员</button></div>
+                                </div>
+                                <div class="kkt-item">
+                                    <label class="kkt-item-label" for="setting-group-poke-user-suffix">我的被拍后缀</label>
+                                    <div class="kkt-item-control poke-setting-input-wrap"><input type="text" id="setting-group-poke-user-suffix" maxlength="20" placeholder="例如：的小心脏"></div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">动效强度</div>
+                                    <div class="kkt-item-control"><select id="setting-group-poke-effect-mode"><option value="full">完整</option><option value="light">轻量</option><option value="off">关闭</option></select><span class="kkt-arrow">›</span></div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">震动反馈</div>
+                                    <div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="setting-group-poke-vibration"><span class="kkt-slider"></span></label></div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">离开会话时提醒</div>
+                                    <div class="kkt-item-control"><select id="setting-group-poke-notification-mode"><option value="in_chat">仅聊天内记录</option><option value="normal">按普通消息提醒</option></select><span class="kkt-arrow">›</span></div>
+                                </div>
+                                <div class="kkt-item">
+                                    <div class="kkt-item-label">参与 AI 上下文</div>
+                                    <div class="kkt-item-control"><label class="kkt-switch"><input type="checkbox" id="setting-group-poke-context"><span class="kkt-slider"></span></label></div>
+                                </div>
+                            </div>
+                            <div class="kkt-item">
                                 <div class="kkt-item-label">自动总结进度</div>
                                 <div class="kkt-item-control">
                                     <button type="button" id="setting-group-auto-journal-visual-btn"
@@ -430,6 +476,10 @@
                     <div class="form-group">
                         <label for="edit-member-persona">人设</label>
                         <textarea id="edit-member-persona" placeholder="详细描述角色的性格、背景等。"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-member-poke-suffix">被拍后缀</label>
+                        <input type="text" id="edit-member-poke-suffix" maxlength="20" placeholder="留空则继承角色的单聊设置">
                     </div>
                     <div style="display: flex; gap: 10px; margin-top: 15px;">
                         <button type="button" id="remove-group-member-btn" class="btn btn-danger" style="flex: 1;">移出群聊</button>

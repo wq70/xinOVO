@@ -2961,6 +2961,8 @@ ${tableContext}`;
         const openFromSettingsBtn = document.getElementById('setting-open-memory-table-btn');
         if (openFromSettingsBtn) {
             openFromSettingsBtn.addEventListener('click', () => {
+                const backBtn = document.querySelector('#memory-table-screen .back-btn');
+                if (backBtn) backBtn.setAttribute('data-target', 'chat-settings-screen');
                 renderMemoryTableScreen();
                 switchScreen('memory-table-screen');
             });
