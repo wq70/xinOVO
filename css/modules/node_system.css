@@ -10,7 +10,7 @@
     padding: 10px 15px;
     background: var(--bg-color, #f5f7f9);
     position: sticky;
-    top: calc(56px + var(--ovo-safe-area-top));
+    top: calc(56px + env(safe-area-inset-top));
     z-index: 10;
 }
 
@@ -248,7 +248,7 @@
 /* 多选操作栏 */
 .node-multi-select-bar {
     position: sticky;
-    top: calc(56px + var(--ovo-safe-area-top));
+    top: calc(56px + env(safe-area-inset-top));
     left: 0;
     right: 0;
     background: var(--panel-bg, #fff);
@@ -426,7 +426,7 @@
 /* 结束节点悬浮按钮 */
 .end-node-float-btn {
     position: absolute;
-    top: calc(60px + var(--ovo-safe-area-top));
+    top: calc(60px + env(safe-area-inset-top));
     right: 15px;
     background: var(--primary-color, #6C8CD5);
     color: white;

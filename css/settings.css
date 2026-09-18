@@ -238,7 +238,7 @@
     background: #ffffff !important;
     overflow-y: auto;
     overscroll-behavior-y: contain;
-    padding-bottom: calc(40px + var(--ovo-safe-area-bottom));
+    padding-bottom: calc(40px + env(safe-area-inset-bottom));
 }
 
 .api-clean-container {
@@ -917,7 +917,7 @@ textarea.api-generation-value { min-height: 48px; height: 48px; resize: vertical
 
 /* 节点编辑器全白重构 */
 #api-node-editor-screen { background: #ffffff !important; }
-.api-node-editor-content { padding: 0 0 calc(64px + var(--ovo-safe-area-bottom)); background: #ffffff !important; }
+.api-node-editor-content { padding: 0 0 calc(64px + env(safe-area-inset-bottom)); background: #ffffff !important; }
 .api-node-editor-form { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
 .api-node-edit-group { margin: 0 !important; }
 .api-node-edit-row { min-width: 0; gap: 12px; padding: 10px 0; }
@@ -945,7 +945,7 @@ textarea.api-generation-value { min-height: 48px; height: 48px; resize: vertical
 .api-node-form-status.error { color: #ef4444; }
 .api-node-actions { display: flex; gap: 8px; margin-top: 8px; }
 .api-node-actions .btn { flex: 1; height: 38px; border-radius: 10px; font-size: 13px; }
-.api-node-editor-form > .api-node-actions { margin-top: 10px; padding-bottom: calc(16px + var(--ovo-safe-area-bottom)); }
+.api-node-editor-form > .api-node-actions { margin-top: 10px; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
 .api-node-conflicts { padding: 8px 0; }
 .api-node-route { display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, minmax(92px, .75fr)); gap: 6px; align-items: center; padding-top: 7px; border-top: 1px dashed #e2e8f0; }
 .api-node-route-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #64748b; font-size: 11px; }

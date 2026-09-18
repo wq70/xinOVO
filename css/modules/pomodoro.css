@@ -245,7 +245,7 @@
     align-items: center;
     width: 100%;
     max-width: 320px;
-    padding: 20px 0 calc(20px + var(--ovo-safe-area-bottom));
+    padding: 20px 0 calc(20px + env(safe-area-inset-bottom));
     flex-shrink: 0;
 }
 

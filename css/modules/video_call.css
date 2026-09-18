@@ -76,7 +76,7 @@
     flex-direction: column;
     z-index: 20100;
     background: radial-gradient(circle at 50% 50%, #111 0%, #000 80%);
-    padding-top: var(--ovo-safe-area-top);
+    padding-top: env(safe-area-inset-top);
 }
 
 .vc-center-wrapper {
@@ -194,7 +194,7 @@
 
 .vc-loading-top-bar {
     position: absolute;
-    top: calc(15px + var(--ovo-safe-area-top));
+    top: calc(15px + env(safe-area-inset-top));
     right: 20px;
     left: auto;
     z-index: 25;
@@ -232,7 +232,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
-    padding-top: calc(30px + var(--ovo-safe-area-top));
+    padding-top: calc(30px + env(safe-area-inset-top));
     padding-bottom: 10px;
     background: linear-gradient(to bottom, var(--vc-bg-color) 40%, transparent);
     z-index: 10;
@@ -662,7 +662,7 @@
     display: none;
     align-items: flex-start;
     justify-content: center;
-    padding-top: calc(12px + var(--ovo-safe-area-top));
+    padding-top: calc(12px + env(safe-area-inset-top));
     opacity: 0;
     transition: opacity 0.3s;
     pointer-events: none !important;
@@ -817,7 +817,7 @@
 /* 缩小按钮 (全屏界面左上角) */
 .vc-minimize-btn {
     position: absolute;
-    top: calc(15px + var(--ovo-safe-area-top));
+    top: calc(15px + env(safe-area-inset-top));
     left: 20px;
     width: 36px;
     height: 36px;
@@ -925,7 +925,7 @@
    ========================================= */
 .vc-user-camera-pip {
     position: absolute;
-    top: calc(15px + var(--ovo-safe-area-top));
+    top: calc(15px + env(safe-area-inset-top));
     right: 15px;
     width: 100px;
     height: 140px;

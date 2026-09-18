@@ -88,7 +88,7 @@ body.night-mode-active {
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
-  padding: 14px 16px calc(90px + var(--ovo-safe-area-bottom));
+  padding: 14px 16px calc(90px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 16px;

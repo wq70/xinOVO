@@ -1212,19 +1212,19 @@ margin-left: auto !important;
                             <button type="button" class="cust-btn cust-btn-primary copy-css-btn" style="height:28px; padding:0 10px; font-size:12px;">复制代码</button>
                         </div>
                         <pre><code>.app-header {
-    padding-top: calc(15px + var(--ovo-safe-area-top)) !important;
+    padding-top: calc(15px + env(safe-area-inset-top)) !important;
     height: auto !important;
 }
 #home-screen {
-    padding-top: calc(45px + var(--ovo-safe-area-top)) !important;
+    padding-top: calc(45px + env(safe-area-inset-top)) !important;
 }
 .settings-sidebar .header {
-    padding-top: calc(15px + var(--ovo-safe-area-top)) !important;
+    padding-top: calc(15px + env(safe-area-inset-top)) !important;
 }
 .message-input-area,
 #multi-select-bar,
 #world-book-multi-select-bar {
-    padding-bottom: calc(10px + var(--ovo-safe-area-bottom)) !important;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom)) !important;
 }</code></pre>
                     </div>
                 </div>
