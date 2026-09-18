@@ -25,24 +25,15 @@
     --folder-pill-active-bg: #1e1e1e;
     --folder-pill-active-text: #ffffff;
     --global-title-color: #000000;
+    --ovo-header-bg: #ffffff;
     --ovo-native-safe-top: env(safe-area-inset-top, 0px);
     --ovo-native-safe-right: env(safe-area-inset-right, 0px);
     --ovo-native-safe-bottom: env(safe-area-inset-bottom, 0px);
     --ovo-native-safe-left: env(safe-area-inset-left, 0px);
-    --ovo-ios-pwa-top-guard: 0px;
     --ovo-safe-area-top: var(--ovo-native-safe-top);
     --ovo-safe-area-right: var(--ovo-native-safe-right);
     --ovo-safe-area-bottom: var(--ovo-native-safe-bottom);
     --ovo-safe-area-left: var(--ovo-native-safe-left);
-    --ovo-status-bar-tint: #ffffff;
-}
-
-@media (orientation: portrait) {
-    html.is-ios-pwa {
-        /* iOS 27 的系统顶栏效果会越过状态栏边界；集中保留可调整的保护距离。 */
-        --ovo-ios-pwa-top-guard: 16px;
-        --ovo-safe-area-top: calc(var(--ovo-native-safe-top) + var(--ovo-ios-pwa-top-guard));
-    }
 }
 
 html {
@@ -69,22 +60,6 @@ body {
     display: flex;
     overflow: hidden;
     overscroll-behavior: none;
-}
-
-#ios-pwa-status-bar-guard {
-    display: none;
-}
-
-@media (orientation: portrait) {
-    html.is-ios-pwa #ios-pwa-status-bar-guard {
-        display: block;
-        position: fixed;
-        inset: 0 0 auto;
-        height: var(--ovo-ios-pwa-top-guard);
-        background-color: var(--ovo-status-bar-tint);
-        pointer-events: none;
-        z-index: 29990;
-    }
 }
 
 /* --- 通用组件 --- */

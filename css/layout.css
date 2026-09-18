@@ -9,6 +9,7 @@
     position: relative;
     display: flex;
     flex-direction: column;
+    min-height: 0;
 }
 
 .screen {
@@ -16,6 +17,7 @@
     flex-direction: column;
     width: 100%;
     flex: 1;
+    min-height: 0;
     overflow: hidden;
     height: auto;
     animation: fadeIn 0.5s ease;
@@ -28,6 +30,7 @@
 
 .content {
     flex-grow: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: 20px;
     padding-bottom: 80px; /* 防止被底部导航栏遮挡 */
@@ -215,12 +218,18 @@ body.night-mode-active {
     --nav-active-icon-color: #e0e0e0;
     --kkt-icon-color: #e0e0e0;
     --func-icon-color: #e0e0e0;
-    --ovo-status-bar-tint: #121212;
+    --ovo-header-bg: #181818;
 }
 
-html.is-ios-pwa .phone-screen {
-    /* iOS 主屏幕 Web App 冷启动时 100dvh 可能在首帧取值错误。 */
-    height: 100vh;
+/*
+ * iOS 26/27 owns the status-bar surface in both Safari and Home Screen apps.
+ * Keep the page header opaque so WebKit has a stable color to sample, while
+ * foreground content continues to respect the native safe-area inset.
+ */
+html.is-ios .app-header {
+    background-color: var(--ovo-header-bg) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }
 
 body.night-mode-active {

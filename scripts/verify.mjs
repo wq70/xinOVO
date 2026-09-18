@@ -167,14 +167,14 @@ if (retainedLegacyTagErrors.length > 1) {
 }
 
 const logicalInfo = collectDocumentInfo(logicalDocument);
-const protectedDomSignature = 'c59c244e3cd1a9c14816662c22553d025a3555f7d19e2b78585e41f46a6ed1e9';
+const protectedDomSignature = '6047b5e9053b44848c8c63407dcd7c9d19115e47746fe173798a243e802e5a1a';
 const actualDomSignature = getNonScriptDomSignature(logicalDocument);
 if (actualDomSignature !== protectedDomSignature) {
     fail(`Assembled non-script DOM differs from the protected pre-split structure: ${actualDomSignature}`);
 }
 const textualIds = [...logicalHtml.matchAll(/\bid\s*=\s*["']([^"']+)["']/gi)].map(match => match[1]);
 const duplicateIds = [...new Set(textualIds.filter((id, index) => textualIds.indexOf(id) !== index))];
-if (textualIds.length !== 2397) fail(`Expected 2397 assembled IDs, found ${textualIds.length}`);
+if (textualIds.length !== 2396) fail(`Expected 2396 assembled IDs, found ${textualIds.length}`);
 if (duplicateIds.length) fail(`Duplicate assembled IDs: ${duplicateIds.join(', ')}`);
 
 const requiredIds = [
@@ -184,7 +184,6 @@ const requiredIds = [
     'chat-settings-screen', 'group-settings-screen',
     'memory-table-screen', 'forum-screen', 'peek-screen', 'node-system-screen',
     'storage-screen', 'mcp-screen', 'mcp-panel', 'mcp-sheet', 'mcp-import-input',
-    'ios-pwa-status-bar-guard',
     'keep-alive-auto-wake-enabled', 'keep-alive-use-builtin-btn', 'keep-alive-playback-status',
     'keep-alive-page-status', 'keep-alive-wake-status', 'keep-alive-task-status',
     'setting-follow-up-enabled', 'setting-follow-up-options', 'setting-follow-up-probability',
