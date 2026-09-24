@@ -177,14 +177,25 @@ const globalSettingKeys = [
     'imageAtmosphereGroups', 'activeImageAtmosphereId', 'novelAiVibeSettings', 'novelAiPreciseReferenceSettings',
     'avatarRecognitionDetailLevel', 'autoCompressImage', 'imageGenTimeout',
     'phoneControlRecycleBin', 'nodeTemplates', 'nodeSummaryText', 'memoryTableTemplates', 'vectorMemoryTemplates',
-    'nightModeSettings', 'homeStatusBarSettings', 'stickerCategories', 'magicRoom',
+    'nightModeSettings', 'homeStatusBarSettings', 'homeLayoutMode', 'freeHomeLayout', 'freeHomeWidgetPresets', 'stickerCategories', 'magicRoom',
     'keepAliveCodeEnabled', 'keepAliveAutoWakeEnabled', 'keepAliveAudioEnabled', 'keepAliveAudioSrc', 'keepAliveAudioName', 'keepAliveAudioLibrary',
     'ttsPresets', 'weatherApiSettings'
 ];
 if (typeof window !== 'undefined') window.globalSettingKeysForBackup = globalSettingKeys;
 
-const appVersion = "6.9.0";
+const appVersion = "6.9.1";
 const updateLog = [
+    {
+        version: "6.9.1",
+        date: "2026-09-23",
+        notes: [
+            "修复偶尔卡在“输入中”的问题。",
+            "修复私聊中表情包显示不正确的问题。",
+            "修复刷新后未返回首页的问题。",
+            "新增“清除聊天 CSS”功能。",
+            "新增自由模式和自定义小组件，使用方式更灵活。"
+        ]
+    },
     {
         version: "6.9.0",
         date: "2026-09-18",

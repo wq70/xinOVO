@@ -358,6 +358,10 @@ function updateBubbleCssPreview(previewContainer, css, useDefault, theme) {
 let currentPageIndex = 0;
 
 function setupHomeScreen() {
+    if (db.homeLayoutMode === 'free' && typeof renderFreeHomeScreen === 'function') {
+        renderFreeHomeScreen();
+        return;
+    }
     const getIcon = (id) => db.customIcons[id] || defaultIcons[id].url;
     const getName = (id) => (db.customAppNames && db.customAppNames[id]) || defaultIcons[id].name;
     if (!db.insWidgetSettings) {
