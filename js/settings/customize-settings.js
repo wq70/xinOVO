@@ -712,7 +712,7 @@ function renderCustomizeForm() {
     const iconOrder = [
         'chat-list-screen', 'api-settings-screen', 'wallpaper-screen',
         'world-book-screen', 'customize-screen', 'tutorial-screen',
-        'day-mode-btn', 'night-mode-btn', 'forum-screen', 'music-screen', 'diary-screen', 'piggy-bank-screen', 'pomodoro-screen', 'storage-analysis-screen', 'appearance-settings-screen', 'theater-screen', 'biekan-app', 'xiaowu-app', 'magic-room-screen'
+        'day-mode-btn', 'night-mode-btn', 'forum-screen', 'music-screen', 'diary-screen', 'piggy-bank-screen', 'pomodoro-screen', 'storage-analysis-screen', 'appearance-settings-screen', 'theater-screen', 'biekan-app', 'magic-room-screen'
     ];
 
     // 1. 顶部纯白分段控制器 Segmented Tab Bar

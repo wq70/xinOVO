@@ -3,7 +3,7 @@ const FREE_HOME_APPS = [
     'chat-list-screen', 'api-settings-screen', 'wallpaper-screen', 'world-book-screen',
     'customize-screen', 'tutorial-screen', 'pomodoro-screen', 'forum-screen',
     'piggy-bank-screen', 'music-screen', 'theater-screen', 'appearance-settings-screen',
-    'biekan-app', 'xiaowu-app'
+    'biekan-app'
 ];
 const FREE_HOME_DOCK = ['day-mode-btn', 'night-mode-btn', 'storage-analysis-screen', 'magic-room-screen'];
 const FREE_WIDGETS = {
@@ -63,6 +63,21 @@ function freeHomeData() {
     }
     let migrated = false;
     for (const page of db.freeHomeLayout.pages) {
+        const items = page.items.flatMap(item => {
+            if (item.type === 'app' && item.appId === 'xiaowu-app') return [];
+            if (item.type !== 'folder' || !Array.isArray(item.apps) || !item.apps.includes('xiaowu-app')) return [item];
+            const apps = item.apps.filter(id => id !== 'xiaowu-app');
+            if (!apps.length) return [];
+            if (apps.length === 1) {
+                const { name, apps: oldApps, ...rest } = item;
+                return [{ ...rest, type: 'app', appId: apps[0] }];
+            }
+            return [{ ...item, apps }];
+        });
+        if (items.length !== page.items.length || items.some((item, index) => item !== page.items[index])) {
+            page.items = items;
+            migrated = true;
+        }
         if (page.items.some(item => !Number.isInteger(item.row) || !Number.isInteger(item.col))) migrated = true;
         freeHomeEnsurePositions(page.items);
         for (const item of page.items) {
@@ -1208,7 +1223,6 @@ function freeHomeOpenCreateFolder() {
 
 function freeHomeOpenApp(appId) {
     if (appId === 'biekan-app') { if (window.McpManager) window.McpManager.open(); return; }
-    if (appId === 'xiaowu-app') { showToast('小屋APP正在开发中…'); return; }
     if (appId === 'piggy-bank-screen') { switchScreen(appId); return; }
     if (appId === 'music-screen' || appId === 'diary-screen') { showToast('该应用正在开发中，敬请期待！'); return; }
     if (appId === 'world-book-screen') renderWorldBookList();

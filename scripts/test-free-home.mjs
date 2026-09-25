@@ -26,8 +26,18 @@ vm.runInContext(fs.readFileSync(new URL('../js/modules/free-home.js', import.met
 function evaluate(expression) { return vm.runInContext(expression, context); }
 
 assert.equal(evaluate('freeHomeData().pages.length'), 2);
-assert.equal(evaluate('freeHomeData().pages.flatMap(p => p.items).length'), 14);
+assert.equal(evaluate('freeHomeData().pages.flatMap(p => p.items).length'), 13);
 assert.equal(evaluate('freeHomeValidLayout(freeHomeData())'), true);
+evaluate(`{
+    const original = db.freeHomeLayout;
+    db.freeHomeLayout = { pages: [{ id: 'legacy', items: [
+        { id: 'old-app', type: 'app', appId: 'xiaowu-app' },
+        { id: 'old-folder', type: 'folder', name: '旧文件夹', apps: ['xiaowu-app', 'biekan-app'] }
+    ] }], dock: [] };
+    const cleaned = freeHomeData();
+    if (cleaned.pages[0].items.length !== 1 || cleaned.pages[0].items[0].appId !== 'biekan-app') throw new Error('旧小屋图标未清除');
+    db.freeHomeLayout = original;
+}`);
 assert.equal(evaluate('FREE_WIDGETS.clock.legacy && FREE_WIDGETS.note.legacy'), true);
 assert.equal(evaluate('FREE_WIDGETS.memory.legacy === undefined && FREE_WIDGETS.ins.legacy === undefined && FREE_WIDGETS.photo.legacy === undefined'), true);
 const memorySettings = evaluate('freeHomeWidgetSnapshot("memory")');
